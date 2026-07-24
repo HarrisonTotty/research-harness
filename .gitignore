@@ -216,3 +216,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Lean / Lake
+#   Build outputs and fetched dependency packages both live under `.lake/`.
+#   `lake-manifest.json` and `lean-toolchain` are intentionally NOT ignored:
+#   they pin exact dependency revisions and the toolchain, and must be tracked.
+/.lake/
+#   Legacy dependency directory used by pre-workspace Lake versions.
+/lake-packages/
+#   Stray compiled artifacts, in case anything is built outside `.lake/`.
+*.olean
+*.ilean

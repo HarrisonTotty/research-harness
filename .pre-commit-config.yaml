@@ -1,0 +1,36 @@
+# Pre-commit hooks for the Python stack.
+# Run `just hooks` to install, or `just pre-commit` to run against every file.
+default_language_version:
+  python: python3.14
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: trailing-whitespace
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.0
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v2.3.0
+    hooks:
+      - id: mypy
+        # Type-check against the real environment rather than an isolated one
+        # so third-party stubs (pandas-stubs, etc.) resolve.
+        pass_filenames: false
+        args: [--config-file=pyproject.toml]
+        additional_dependencies:
+          - pandas-stubs>=3.0.0

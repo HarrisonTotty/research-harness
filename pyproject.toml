@@ -1,0 +1,153 @@
+[project]
+name = "research-harness"
+version = "0.1.0"
+description = "A computational research sandbox for exploration, validation, and publication."
+readme = "README.md"
+requires-python = ">=3.14"
+license = "MIT"
+authors = [{ name = "Harrison Totty", email = "harrison@totty.dev" }]
+dependencies = [
+    "pandas>=3.0.5",
+]
+
+[project.scripts]
+experiment = "experiments.__main__:main"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.0",
+    "mypy>=2.3.0",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "hypothesis>=6.161.2",
+    "pre-commit>=4.6.1",
+    "pandas-stubs>=3.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/research", "src/experiments"]
+
+[tool.uv]
+default-groups = ["dev"]
+
+# --------------------------------------------------------------------------- #
+# Ruff — linting and formatting
+# --------------------------------------------------------------------------- #
+[tool.ruff]
+line-length = 88
+target-version = "py314"
+src = ["src", "tests"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = [
+    "F",    # pyflakes
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "I",    # isort
+    "N",    # pep8-naming
+    "D",    # pydocstyle
+    "UP",   # pyupgrade
+    "ANN",  # flake8-annotations
+    "S",    # flake8-bandit
+    "B",    # flake8-bugbear
+    "A",    # flake8-builtins
+    "C4",   # flake8-comprehensions
+    "DTZ",  # flake8-datetimez
+    "PIE",  # flake8-pie
+    "PT",   # flake8-pytest-style
+    "RET",  # flake8-return
+    "SIM",  # flake8-simplify
+    "TID",  # flake8-tidy-imports
+    "PTH",  # flake8-use-pathlib
+    "NPY",  # numpy-specific rules
+    "PD",   # pandas-vet
+    "PL",   # pylint
+    "TRY",  # tryceratops
+    "PERF", # perflint
+    "FURB", # refurb
+    "RUF",  # ruff-specific rules
+]
+ignore = [
+    "D203",   # one-blank-line-before-class (conflicts with D211)
+    "D213",   # multi-line-summary-second-line (conflicts with D212)
+    "COM812", # trailing-comma-missing (handled by the formatter)
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.pylint]
+max-args = 8
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "D",       # tests are self-documenting via their names
+    "ANN",     # annotations add little in test bodies
+    "S101",    # asserts are the point of a test
+    "PLR2004", # explicit expected values are clearer than named constants
+]
+
+# --------------------------------------------------------------------------- #
+# Mypy — static type checking
+# --------------------------------------------------------------------------- #
+[tool.mypy]
+python_version = "3.14"
+files = ["src", "tests"]
+strict = true
+warn_unreachable = true
+warn_no_return = true
+enable_error_code = [
+    "redundant-expr",
+    "truthy-bool",
+    "ignore-without-code",
+    "possibly-undefined",
+    "redundant-self",
+    "explicit-override",
+]
+pretty = true
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+
+# --------------------------------------------------------------------------- #
+# Pytest
+# --------------------------------------------------------------------------- #
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+addopts = [
+    "--strict-config",
+    "--strict-markers",
+    "--import-mode=importlib",
+    "-ra",
+]
+xfail_strict = true
+filterwarnings = ["error"]
+
+# --------------------------------------------------------------------------- #
+# Coverage
+# --------------------------------------------------------------------------- #
+[tool.coverage.run]
+branch = true
+source = ["src"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@(abc\\.)?abstractmethod",
+    "if __name__ == .__main__.:",
+]
