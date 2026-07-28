@@ -27,12 +27,23 @@ from typing import TYPE_CHECKING, override
 import pandas as pd
 
 from research._bitmask import (
-    bits,
     down_closure,
     fmt,
+    indexed_ground_set,
     mask_from_labels,
-    require_distinct,
+    remap,
 )
+from research._cyclic import (
+    check_necklace_conditions,
+    check_positroid,
+    gale_geq,
+    necklace_bases,
+    necklace_masks,
+    positroid_witness,
+)
+from research._graph import UnionFind
+from research._linalg import det_q
+from research._plot import ensure_axes, scatter_labeled, unit_circle
 from research.matroid import Matroid
 
 if TYPE_CHECKING:
@@ -46,153 +57,6 @@ __all__ = [
     "shifted_schubert_positroid",
     "uniform_positroid",
 ]
-
-
-# --------------------------------------------------------------------------- #
-# Cyclic-order helpers
-# --------------------------------------------------------------------------- #
-def _gale_geq(candidate: int, minimum: int, start: int, n: int) -> bool:
-    """Return whether ``candidate >= minimum`` in the Gale order ``<=_start``.
-
-    Both masks must have equal cardinality. Positions are compared in the
-    cyclically shifted order ``start <_start start+1 <_start ...`` after
-    sorting both sets (Positroid page, Grassmann necklace block: the Gale
-    order on ``d``-subsets).
-    """
-    shifted_candidate = sorted((p - start) % n for p in bits(candidate))
-    shifted_minimum = sorted((p - start) % n for p in bits(minimum))
-    return all(c >= m for c, m in zip(shifted_candidate, shifted_minimum, strict=True))
-
-
-def _necklace_masks(n: int, family: frozenset[int]) -> tuple[int, ...]:
-    """Return the Grassmann necklace of an independence family, as masks.
-
-    Entry ``i`` is the ``<=_i``-minimal basis, computed greedily in the
-    cyclically shifted order — the lexicographically minimal basis w.r.t.
-    ``<_i``, which the Positroid page identifies with the Gale-minimal one
-    (Grassmann necklace block, "From a matroid").
-    """
-    masks: list[int] = []
-    for start in range(n):
-        current = 0
-        for offset in range(n):
-            e = (start + offset) % n
-            if current | (1 << e) in family:
-                current |= 1 << e
-        masks.append(current)
-    return tuple(masks)
-
-
-def _positroid_witness[T: Hashable](matroid: Matroid[T]) -> int | None:
-    """Return a mask witnessing failure of Oh's membership test, or ``None``.
-
-    Oh's theorem: a matroid is a positroid for its stored cyclic order iff
-    its bases are exactly ``{B : B >=_j I_j for all j}`` where ``I`` is its
-    Grassmann necklace (Positroid page, Oh's theorem block). The witness is
-    a ``d``-subset on the wrong side of that equality.
-    """
-    n = len(matroid.elements)
-    family = matroid.independent_masks
-    necklace = _necklace_masks(n, family)
-    d = matroid.rank()
-    basis_masks = {m for m in family if m.bit_count() == d}
-    for combo in itertools.combinations(range(n), d):
-        mask = sum(1 << p for p in combo)
-        member = all(_gale_geq(mask, necklace[s], s, n) for s in range(n))
-        if member != (mask in basis_masks):
-            return mask
-    return None
-
-
-def _check_positroid[T: Hashable](matroid: Matroid[T]) -> None:
-    """Check the positroid property via Oh's theorem.
-
-    Raises:
-        ValueError: Naming Oh's theorem, with the witness subset.
-    """
-    witness = _positroid_witness(matroid)
-    if witness is None:
-        return
-    formatted = fmt(witness, matroid.elements)
-    if witness in matroid.independent_masks:
-        msg = (
-            f"not a positroid for this cyclic order: basis {formatted} "
-            f"fails B >=_j I_j against the Grassmann necklace, violating "
-            f"Oh's theorem"
-        )
-    else:
-        msg = (
-            f"not a positroid for this cyclic order: by Oh's theorem the "
-            f"bases must be exactly {{B : B >=_j I_j for all j}}, but "
-            f"{formatted} satisfies every cyclically shifted Schubert "
-            f"condition without being a basis"
-        )
-    raise ValueError(msg)
-
-
-def _check_necklace_conditions(
-    elements: tuple[Hashable, ...], masks: Sequence[int]
-) -> None:
-    r"""Check the Grassmann necklace conditions (Postnikov section 16).
-
-    Indices modulo ``n``: if ``i`` is in ``I_i`` then ``I_{i+1}`` must be
-    ``(I_i \ {i}) + {j}`` for some ``j``; otherwise ``I_{i+1} = I_i``.
-
-    Raises:
-        ValueError: Naming the violated condition.
-    """
-    n = len(elements)
-    for i in range(n):
-        current = masks[i]
-        following = masks[(i + 1) % n]
-        if current >> i & 1:
-            base = current ^ (1 << i)
-            added = following & ~base
-            if base & ~following or added.bit_count() != 1:
-                msg = (
-                    f"Grassmann necklace condition violated (Postnikov "
-                    f"section 16): {elements[i]!r} is in "
-                    f"I_{i + 1} = {fmt(current, elements)}, so the next "
-                    f"entry must be (I_i \\ {{i}}) + {{j}}, got "
-                    f"{fmt(following, elements)}"
-                )
-                raise ValueError(msg)
-        elif following != current:
-            msg = (
-                f"Grassmann necklace condition violated (Postnikov "
-                f"section 16): {elements[i]!r} is not in "
-                f"I_{i + 1} = {fmt(current, elements)}, so the next entry "
-                f"must equal it, got {fmt(following, elements)}"
-            )
-            raise ValueError(msg)
-
-
-def _det_q(rows: Sequence[Sequence[Fraction]]) -> Fraction:
-    """Return the determinant of a square matrix over the rationals.
-
-    Exact fraction-preserving Gaussian elimination with row pivoting; the
-    empty matrix has determinant one.
-    """
-    d = len(rows)
-    matrix = [list(row) for row in rows]
-    det = Fraction(1)
-    for col in range(d):
-        pivot_row = next((r for r in range(col, d) if matrix[r][col]), None)
-        if pivot_row is None:
-            return Fraction(0)
-        if pivot_row != col:
-            matrix[col], matrix[pivot_row] = matrix[pivot_row], matrix[col]
-            det = -det
-        pivot = matrix[col][col]
-        det *= pivot
-        inverse = 1 / pivot
-        for r in range(col + 1, d):
-            factor = matrix[r][col] * inverse
-            if factor:
-                matrix[r] = [
-                    a - factor * b for a, b in zip(matrix[r], matrix[col], strict=True)
-                ]
-    return det
 
 
 # --------------------------------------------------------------------------- #
@@ -288,6 +152,16 @@ class DecoratedPermutation:
 # --------------------------------------------------------------------------- #
 # The positroid itself
 # --------------------------------------------------------------------------- #
+def _adopt[T: Hashable](base: Matroid[T]) -> Positroid[T]:
+    """Reread a matroid already known to be a positroid, skipping validation.
+
+    The transformation overrides funnel through here after a closure result
+    (Ardila-Rincon-Williams Props. 3.4-3.5, Lemma 3.3) certifies the parent
+    computation, so no Oh membership test is run.
+    """
+    return Positroid(base.elements, base.independent_masks)
+
+
 @dataclass(frozen=True, eq=False, repr=False)
 class Positroid[T: Hashable](Matroid[T]):
     """A positroid: a matroid whose stored element order is its cyclic order.
@@ -337,7 +211,7 @@ class Positroid[T: Hashable](Matroid[T]):
                 order (the message names Oh's theorem with a witness).
         """
         if validate:
-            _check_positroid(matroid)
+            check_positroid(matroid)
         return cls(matroid.elements, matroid.independent_masks)
 
     @classmethod
@@ -372,7 +246,7 @@ class Positroid[T: Hashable](Matroid[T]):
         n = len(labels)
         basis_masks: list[int] = []
         for combo in itertools.combinations(range(n), d):
-            minor = _det_q([[rational[c][r] for c in combo] for r in range(d)])
+            minor = det_q([[rational[c][r] for c in combo] for r in range(d)])
             if minor < 0:
                 chosen = sum(1 << c for c in combo)
                 msg = (
@@ -400,14 +274,7 @@ class Positroid[T: Hashable](Matroid[T]):
         Oh's theorem certifies the result is a positroid with necklace
         ``I``, so no re-validation is performed.
         """
-        n = len(elements)
-        d = masks[0].bit_count() if masks else 0
-        basis_masks: list[int] = []
-        for combo in itertools.combinations(range(n), d):
-            mask = sum(1 << p for p in combo)
-            if all(_gale_geq(mask, masks[s], s, n) for s in range(n)):
-                basis_masks.append(mask)
-        return cls(elements, down_closure(basis_masks))
+        return cls(elements, down_closure(necklace_bases(masks, len(elements))))
 
     @classmethod
     def from_grassmann_necklace(
@@ -437,9 +304,7 @@ class Positroid[T: Hashable](Matroid[T]):
             ValueError: If the necklace length or labels are wrong, or a
                 necklace condition fails (the message names it).
         """
-        elems = tuple(elements)
-        require_distinct(elems)
-        index: Mapping[Hashable, int] = {e: i for i, e in enumerate(elems)}
+        elems, index = indexed_ground_set(elements)
         masks = tuple(mask_from_labels(entry, index) for entry in necklace)
         if len(masks) != len(elems):
             msg = (
@@ -449,7 +314,7 @@ class Positroid[T: Hashable](Matroid[T]):
             )
             raise ValueError(msg)
         if validate:
-            _check_necklace_conditions(elems, masks)
+            check_necklace_conditions(elems, masks)
         return cls._from_necklace_masks(elems, masks)
 
     @classmethod
@@ -484,8 +349,7 @@ class Positroid[T: Hashable](Matroid[T]):
             ValueError: If the ground-set size does not match the
                 permutation, or the derived necklace is inconsistent.
         """
-        elems = tuple(elements)
-        require_distinct(elems)
+        elems, _ = indexed_ground_set(elements)
         n = len(elems)
         if len(decorated.targets) != n:
             msg = (
@@ -506,7 +370,7 @@ class Positroid[T: Hashable](Matroid[T]):
                 if (k - target - 1) % n <= span:
                     masks[k] |= 1 << j
         if validate:
-            _check_necklace_conditions(elems, tuple(masks))
+            check_necklace_conditions(elems, tuple(masks))
         return cls._from_necklace_masks(elems, tuple(masks))
 
     # ------------------------------------------- inherited-formulation gates
@@ -812,7 +676,7 @@ class Positroid[T: Hashable](Matroid[T]):
     @functools.cached_property
     def _necklace_position_masks(self) -> tuple[int, ...]:
         """The Grassmann necklace as bitmasks, one entry per start position."""
-        return _necklace_masks(len(self.elements), self.independent_masks)
+        return necklace_masks(len(self.elements), self.independent_masks)
 
     @functools.cached_property
     def grassmann_necklace(self) -> tuple[frozenset[T], ...]:
@@ -878,24 +742,15 @@ class Positroid[T: Hashable](Matroid[T]):
         (Ardila-Rincon-Williams Thm. 7.6). Elements in no circuit (coloops)
         are singleton components.
         """
-        n = len(self.elements)
-        parent = list(range(n))
-
-        def find(p: int) -> int:
-            while parent[p] != p:
-                parent[p] = parent[parent[p]]
-                p = parent[p]
-            return p
-
+        components = UnionFind[int]()
+        for position in range(len(self.elements)):
+            components.add(position)
         for circuit in self.circuits:
             members = [self._index[e] for e in circuit]
             for member in members[1:]:
-                parent[find(members[0])] = find(member)
-        groups: dict[int, list[int]] = {}
-        for p in range(n):
-            groups.setdefault(find(p), []).append(p)
+                components.union(members[0], member)
         return frozenset(
-            frozenset(self.elements[p] for p in group) for group in groups.values()
+            frozenset(self.elements[p] for p in group) for group in components.groups()
         )
 
     def cyclic_rank_bounds(self) -> dict[tuple[int, int], int]:
@@ -945,22 +800,18 @@ class Positroid[T: Hashable](Matroid[T]):
             ValueError: If ``order`` is not a permutation of the ground set
                 or the matroid is not a positroid for it.
         """
-        new_elements = tuple(order)
-        require_distinct(new_elements)
+        new_elements, translate = indexed_ground_set(order)
         if frozenset(new_elements) != self.ground_set:
             msg = (
                 f"the new order must be a permutation of the ground set; "
                 f"got {new_elements!r}"
             )
             raise ValueError(msg)
-        translate = {label: pos for pos, label in enumerate(new_elements)}
-        remap = [translate[e] for e in self.elements]
-        family = frozenset(
-            sum(1 << remap[b] for b in bits(mask)) for mask in self.independent_masks
-        )
+        table = [translate[e] for e in self.elements]
+        family = frozenset(remap(mask, table) for mask in self.independent_masks)
         result = Positroid(new_elements, family)
         if validate:
-            _check_positroid(result)
+            check_positroid(result)
         return result
 
     def cyclic_shift(self, steps: int = 1) -> Positroid[T]:
@@ -982,8 +833,7 @@ class Positroid[T: Hashable](Matroid[T]):
         Closure under duality is Ardila-Rincon-Williams Prop. 3.5, so no
         re-validation is performed.
         """
-        base = super().dual()
-        return Positroid(base.elements, base.independent_masks)
+        return _adopt(super().dual())
 
     @override
     def restrict(self, subset: Iterable[T]) -> Positroid[T]:
@@ -995,8 +845,7 @@ class Positroid[T: Hashable](Matroid[T]):
         Raises:
             ValueError: If the subset contains unknown labels.
         """
-        base = super().restrict(subset)
-        return Positroid(base.elements, base.independent_masks)
+        return _adopt(super().restrict(subset))
 
     @override
     def delete(self, subset: Iterable[T]) -> Positroid[T]:
@@ -1008,8 +857,7 @@ class Positroid[T: Hashable](Matroid[T]):
         Raises:
             ValueError: If the subset contains unknown labels.
         """
-        base = super().delete(subset)
-        return Positroid(base.elements, base.independent_masks)
+        return _adopt(super().delete(subset))
 
     @override
     def contract(self, subset: Iterable[T]) -> Positroid[T]:
@@ -1021,8 +869,7 @@ class Positroid[T: Hashable](Matroid[T]):
         Raises:
             ValueError: If the subset contains unknown labels.
         """
-        base = super().contract(subset)
-        return Positroid(base.elements, base.independent_masks)
+        return _adopt(super().contract(subset))
 
     @override
     def minor(
@@ -1046,8 +893,7 @@ class Positroid[T: Hashable](Matroid[T]):
         Raises:
             ValueError: If the two sets overlap or contain unknown labels.
         """
-        base = super().minor(deletions=deletions, contractions=contractions)
-        return Positroid(base.elements, base.independent_masks)
+        return _adopt(super().minor(deletions=deletions, contractions=contractions))
 
     @override
     def simplification(self) -> Positroid[T]:
@@ -1057,8 +903,7 @@ class Positroid[T: Hashable](Matroid[T]):
         representatives, so closure follows from Ardila-Rincon-Williams
         Prop. 3.5.
         """
-        base = super().simplification()
-        return Positroid(base.elements, base.independent_masks)
+        return _adopt(super().simplification())
 
     @override
     def direct_sum[U: Hashable](self, other: Matroid[U]) -> Matroid[T | U]:
@@ -1075,7 +920,7 @@ class Positroid[T: Hashable](Matroid[T]):
         """
         combined = super().direct_sum(other)
         if isinstance(other, Positroid):
-            return Positroid(combined.elements, combined.independent_masks)
+            return _adopt(combined)
         return combined
 
     # ---------------------------------------------------------- dataframes
@@ -1104,29 +949,16 @@ class Positroid[T: Hashable](Matroid[T]):
     # ------------------------------------------------------- visualization
     def _circle_positions(self) -> list[tuple[float, float]]:
         """Place the ground set clockwise on the unit circle, first on top."""
-        n = len(self.elements)
-        return [
-            (
-                math.cos(math.pi / 2 - 2 * math.pi * i / n),
-                math.sin(math.pi / 2 - 2 * math.pi * i / n),
-            )
-            for i in range(n)
-        ]
+        return unit_circle(len(self.elements), phase=math.pi / 2, clockwise=True)
 
     def _annotate_circle(self, ax: Axes, points: list[tuple[float, float]]) -> None:
         """Draw and label the ground-set points of a circular diagram."""
-        if points:
-            ax.scatter([x for x, _ in points], [y for _, y in points], zorder=2)
-        for element, (x, y) in zip(self.elements, points, strict=True):
-            ax.annotate(
-                repr(element),
-                (x, y),
-                textcoords="offset points",
-                xytext=(12 * x, 12 * y),
-                ha="center",
-                va="center",
-                fontsize=8,
-            )
+        scatter_labeled(
+            ax,
+            points,
+            [repr(element) for element in self.elements],
+            [(12 * x, 12 * y) for x, y in points],
+        )
         ax.set_aspect("equal")
         ax.set_axis_off()
 
@@ -1145,11 +977,7 @@ class Positroid[T: Hashable](Matroid[T]):
         Returns:
             The axes drawn on. Never calls ``show`` or writes files.
         """
-        if ax is None:
-            # Deferred so core use never imports the plotting stack.
-            import matplotlib.pyplot as plt  # noqa: PLC0415
-
-            _, ax = plt.subplots()
+        ax = ensure_axes(ax)
         decorated = self.to_decorated_permutation()
         points = self._circle_positions()
         for i, target in enumerate(decorated.targets, start=1):
@@ -1195,11 +1023,7 @@ class Positroid[T: Hashable](Matroid[T]):
         Returns:
             The axes drawn on. Never calls ``show`` or writes files.
         """
-        if ax is None:
-            # Deferred so core use never imports the plotting stack.
-            import matplotlib.pyplot as plt  # noqa: PLC0415
-
-            _, ax = plt.subplots()
+        ax = ensure_axes(ax)
         points = self._circle_positions()
         components = sorted(
             (
@@ -1277,19 +1101,17 @@ def shifted_schubert_positroid[T: Hashable](
         ValueError: If labels are unknown or duplicated, or ``position`` is
             out of range.
     """
-    elems = tuple(elements)
-    require_distinct(elems)
+    elems, index = indexed_ground_set(elements)
     n = len(elems)
     if not 1 <= position <= n:
         msg = f"position must be in 1..{n}, got {position}"
         raise ValueError(msg)
-    index: Mapping[Hashable, int] = {e: i for i, e in enumerate(elems)}
     core_mask = mask_from_labels(core, index)
     d = core_mask.bit_count()
     bases = [
         [elems[p] for p in combo]
         for combo in itertools.combinations(range(n), d)
-        if _gale_geq(sum(1 << p for p in combo), core_mask, position - 1, n)
+        if gale_geq(sum(1 << p for p in combo), core_mask, position - 1, n)
     ]
     return Positroid.from_bases(elems, bases, validate=validate)
 
@@ -1338,4 +1160,4 @@ def is_positroid[T: Hashable](matroid: Matroid[T]) -> bool:
     checkable membership test"). Remember the page's caveat: the answer
     depends on the stored order, not just the isomorphism class.
     """
-    return _positroid_witness(matroid) is None
+    return positroid_witness(matroid) is None

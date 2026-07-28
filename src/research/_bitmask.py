@@ -6,13 +6,15 @@ holds the label/mask plumbing shared by :mod:`research.matroid` and
 :mod:`research.positroid` so each structure module stays about one concern.
 """
 
-from collections.abc import Hashable, Iterable, Iterator, Mapping
+from collections.abc import Hashable, Iterable, Iterator, Mapping, Sequence
 
 __all__ = [
     "bits",
     "down_closure",
     "fmt",
+    "indexed_ground_set",
     "mask_from_labels",
+    "remap",
     "require_distinct",
     "submasks",
 ]
@@ -72,6 +74,31 @@ def mask_from_labels[T: Hashable](labels: Iterable[T], index: Mapping[T, int]) -
             raise ValueError(msg)
         mask |= 1 << position
     return mask
+
+
+def remap(mask: int, table: Mapping[int, int] | Sequence[int]) -> int:
+    """Return the mask with each set bit ``b`` moved to position ``table[b]``.
+
+    Every set bit of ``mask`` must have an entry in ``table``; targets must
+    be distinct for the result to preserve cardinality.
+    """
+    return sum(1 << table[b] for b in bits(mask))
+
+
+def indexed_ground_set[T: Hashable](
+    elements: Iterable[T],
+) -> tuple[tuple[T, ...], dict[T, int]]:
+    """Return the ground tuple and its label-to-bit index.
+
+    The shared preamble of every ``from_<formulation>`` constructor: fix the
+    element order, reject duplicates, and index labels by bit position.
+
+    Raises:
+        ValueError: If two elements compare equal.
+    """
+    elems = tuple(elements)
+    require_distinct(elems)
+    return elems, {e: i for i, e in enumerate(elems)}
 
 
 def require_distinct(elements: tuple[Hashable, ...]) -> None:

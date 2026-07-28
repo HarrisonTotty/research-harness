@@ -26,12 +26,34 @@ from typing import TYPE_CHECKING, override
 
 import pandas as pd
 
-from research._bitmask import bits as _bits
-from research._bitmask import down_closure as _down_closure
-from research._bitmask import fmt as _fmt
-from research._bitmask import mask_from_labels as _mask_from_labels
-from research._bitmask import require_distinct as _require_distinct
-from research._bitmask import submasks as _submasks
+from research._axioms import (
+    basis_exchange_violation,
+    check_basis_axioms,
+    check_circuit_axioms,
+    check_closure_axioms,
+    check_flat_axioms,
+    check_hyperplane_axioms,
+    check_independence_axioms,
+    check_rank_axioms,
+)
+from research._bitmask import (
+    bits,
+    down_closure,
+    fmt,
+    indexed_ground_set,
+    mask_from_labels,
+    remap,
+    submasks,
+)
+from research._graph import has_matching, is_forest
+from research._linalg import (
+    RATIONALS,
+    gf_scalar,
+    is_prime,
+    linear_independence_family,
+    prime_field,
+)
+from research._plot import ensure_axes, scatter_labeled, unit_circle
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
@@ -52,415 +74,6 @@ __all__ = [
 
 _EXCHANGE_DISTANCE: int = 2
 """Symmetric-difference size linking two bases in the basis exchange graph."""
-
-_SMALLEST_PRIME: int = 2
-"""Smallest field characteristic accepted by :meth:`Matroid.from_vectors`."""
-
-
-# --------------------------------------------------------------------------- #
-# Axiom checkers — one per axiomatization on the Matroid page. Every error
-# names the numbered axiom exactly as the page numbers it.
-# --------------------------------------------------------------------------- #
-def _check_independence_axioms(
-    elements: tuple[Hashable, ...], masks: frozenset[int]
-) -> None:
-    """Check the independent-set axioms (I1)-(I3) (Whitney 1935, (a)/(b)).
-
-    Raises:
-        ValueError: Naming the first violated axiom.
-    """
-    if 0 not in masks:
-        msg = "(I1) violated: the empty set must be independent"
-        raise ValueError(msg)
-    for mask in masks:
-        for bit in _bits(mask):
-            sub = mask ^ (1 << bit)
-            if sub not in masks:
-                msg = (
-                    f"(I2) hereditary axiom violated: {_fmt(mask, elements)} is "
-                    f"independent but its subset {_fmt(sub, elements)} is not"
-                )
-                raise ValueError(msg)
-    for small in masks:
-        for large in masks:
-            if small.bit_count() >= large.bit_count():
-                continue
-            can_augment = any(
-                small | (1 << bit) in masks for bit in _bits(large & ~small)
-            )
-            if not can_augment:
-                msg = (
-                    f"(I3) augmentation axiom violated: {_fmt(small, elements)} "
-                    f"cannot be extended from {_fmt(large, elements)}"
-                )
-                raise ValueError(msg)
-
-
-def _basis_exchange_violation(
-    base_masks: frozenset[int],
-) -> tuple[int, int, int] | None:
-    """Return a witness ``(b1, b2, x)`` violating (B2), or ``None`` if none."""
-    for b1 in base_masks:
-        for b2 in base_masks:
-            for x in _bits(b1 & ~b2):
-                exchanged = (
-                    (b1 ^ (1 << x)) | (1 << y) in base_masks for y in _bits(b2 & ~b1)
-                )
-                if not any(exchanged):
-                    return (b1, b2, x)
-    return None
-
-
-def _check_basis_axioms(
-    elements: tuple[Hashable, ...], base_masks: frozenset[int]
-) -> None:
-    """Check the basis axioms (B1)-(B2).
-
-    Equicardinality of bases is a theorem, not an axiom, and is deliberately
-    not checked here (Matroid page, Definition — Bases).
-
-    Raises:
-        ValueError: Naming the first violated axiom.
-    """
-    if not base_masks:
-        msg = "(B1) violated: the set of bases must be nonempty"
-        raise ValueError(msg)
-    witness = _basis_exchange_violation(base_masks)
-    if witness is not None:
-        b1, b2, x = witness
-        msg = (
-            f"(B2) basis exchange violated: no element of {_fmt(b2, elements)} "
-            f"can replace {elements[x]!r} in {_fmt(b1, elements)}"
-        )
-        raise ValueError(msg)
-
-
-def _check_circuit_axioms(
-    elements: tuple[Hashable, ...], circuit_masks: frozenset[int]
-) -> None:
-    """Check the circuit axioms (C1)-(C3).
-
-    Raises:
-        ValueError: Naming the first violated axiom.
-    """
-    if 0 in circuit_masks:
-        msg = "(C1) violated: the empty set cannot be a circuit"
-        raise ValueError(msg)
-    for c1 in circuit_masks:
-        for c2 in circuit_masks:
-            if c1 != c2 and c1 & ~c2 == 0:
-                msg = (
-                    f"(C2) antichain axiom violated: circuit {_fmt(c1, elements)} "
-                    f"is a proper subset of circuit {_fmt(c2, elements)}"
-                )
-                raise ValueError(msg)
-    for c1 in circuit_masks:
-        for c2 in circuit_masks:
-            if c1 == c2:
-                continue
-            for e in _bits(c1 & c2):
-                allowed = (c1 | c2) ^ (1 << e)
-                if not any(c3 & ~allowed == 0 for c3 in circuit_masks):
-                    msg = (
-                        f"(C3) circuit elimination violated for "
-                        f"{_fmt(c1, elements)} and {_fmt(c2, elements)} at "
-                        f"{elements[e]!r}"
-                    )
-                    raise ValueError(msg)
-
-
-def _check_rank_axioms(elements: tuple[Hashable, ...], table: Sequence[int]) -> None:
-    """Check rank axioms (R1)-(R3) via Whitney's local forms (1935, section 2).
-
-    The unit-increase and local-flatness checks cost ``O(2^n * n^2)`` versus
-    ``O(4^n)`` for pairwise submodularity; their failures imply failures of
-    the page-numbered axioms as noted in each message (Whitney 1935, Thm. 3).
-
-    Raises:
-        ValueError: Naming the first violated axiom.
-    """
-    n = len(elements)
-    for mask in range(1 << n):
-        if not 0 <= table[mask] <= mask.bit_count():
-            msg = (
-                f"(R1) violated: r({_fmt(mask, elements)}) = {table[mask]} "
-                f"is outside [0, {mask.bit_count()}]"
-            )
-            raise ValueError(msg)
-    for mask in range(1 << n):
-        for e in range(n):
-            if mask >> e & 1:
-                continue
-            step = table[mask | (1 << e)] - table[mask]
-            if step < 0:
-                msg = (
-                    f"(R2) monotonicity violated: rank drops when adding "
-                    f"{elements[e]!r} to {_fmt(mask, elements)}"
-                )
-                raise ValueError(msg)
-            if step > 1:
-                msg = (
-                    f"(R3) submodularity (with (R1)) violated: rank grows by "
-                    f"{step} when adding {elements[e]!r} to {_fmt(mask, elements)}"
-                )
-                raise ValueError(msg)
-    for mask in range(1 << n):
-        outside = [e for e in range(n) if not mask >> e & 1]
-        for e1, e2 in itertools.combinations(outside, 2):
-            flat1 = table[mask | (1 << e1)] == table[mask]
-            flat2 = table[mask | (1 << e2)] == table[mask]
-            joint = table[mask | (1 << e1) | (1 << e2)]
-            if flat1 and flat2 and joint != table[mask]:
-                msg = (
-                    f"(R3) submodularity violated: {elements[e1]!r} and "
-                    f"{elements[e2]!r} each leave r({_fmt(mask, elements)}) "
-                    f"unchanged but together raise it"
-                )
-                raise ValueError(msg)
-
-
-def _check_closure_axioms(elements: tuple[Hashable, ...], table: Sequence[int]) -> None:
-    """Check the closure axioms (CL1)-(CL4) (Mac Lane-Steinitz exchange).
-
-    Monotonicity (CL2) is checked in single-element steps, which implies the
-    general form by induction along a chain.
-
-    Raises:
-        ValueError: Naming the first violated axiom.
-    """
-    n = len(elements)
-    for mask in range(1 << n):
-        if mask & ~table[mask]:
-            msg = (
-                f"(CL1) extensivity violated: cl({_fmt(mask, elements)}) does "
-                f"not contain {_fmt(mask, elements)}"
-            )
-            raise ValueError(msg)
-    for mask in range(1 << n):
-        for e in range(n):
-            if mask >> e & 1:
-                continue
-            if table[mask] & ~table[mask | (1 << e)]:
-                msg = (
-                    f"(CL2) monotonicity violated between {_fmt(mask, elements)} "
-                    f"and {_fmt(mask | (1 << e), elements)}"
-                )
-                raise ValueError(msg)
-    for mask in range(1 << n):
-        if table[table[mask]] != table[mask]:
-            msg = (
-                f"(CL3) idempotence violated: cl(cl({_fmt(mask, elements)})) "
-                f"differs from cl({_fmt(mask, elements)})"
-            )
-            raise ValueError(msg)
-    for mask in range(1 << n):
-        for x in range(n):
-            gained = table[mask | (1 << x)] & ~table[mask]
-            for y in _bits(gained):
-                if not table[mask | (1 << y)] >> x & 1:
-                    msg = (
-                        f"(CL4) Mac Lane-Steinitz exchange violated at "
-                        f"X = {_fmt(mask, elements)}, x = {elements[x]!r}, "
-                        f"y = {elements[y]!r}"
-                    )
-                    raise ValueError(msg)
-
-
-def _check_flat_axioms(
-    elements: tuple[Hashable, ...], flat_masks: frozenset[int]
-) -> None:
-    """Check the flat axioms (F1)-(F3).
-
-    Raises:
-        ValueError: Naming the first violated axiom.
-    """
-    full = (1 << len(elements)) - 1
-    if full not in flat_masks:
-        msg = "(F1) violated: the ground set must be a flat"
-        raise ValueError(msg)
-    for f1 in flat_masks:
-        for f2 in flat_masks:
-            if f1 & f2 not in flat_masks:
-                msg = (
-                    f"(F2) violated: the intersection of flats "
-                    f"{_fmt(f1, elements)} and {_fmt(f2, elements)} is not a flat"
-                )
-                raise ValueError(msg)
-    for flat in flat_masks:
-        above = [
-            g for g in flat_masks if g != flat and g & ~flat != 0 and flat & ~g == 0
-        ]
-        minimal = [
-            g
-            for g in above
-            if not any(h != g and flat | h != flat and h & ~g == 0 for h in above)
-        ]
-        covered = 0
-        for g in minimal:
-            part = g & ~flat
-            if covered & part:
-                msg = (
-                    f"(F3) covering axiom violated: minimal flats above "
-                    f"{_fmt(flat, elements)} overlap outside it"
-                )
-                raise ValueError(msg)
-            covered |= part
-        if covered != full & ~flat:
-            msg = (
-                f"(F3) covering axiom violated: minimal flats above "
-                f"{_fmt(flat, elements)} do not cover its complement"
-            )
-            raise ValueError(msg)
-
-
-def _check_hyperplane_axioms(
-    elements: tuple[Hashable, ...], h_masks: frozenset[int]
-) -> None:
-    """Check the hyperplane axioms (H1)-(H3).
-
-    Raises:
-        ValueError: Naming the first violated axiom.
-    """
-    full = (1 << len(elements)) - 1
-    if full in h_masks:
-        msg = "(H1) violated: the ground set cannot be a hyperplane"
-        raise ValueError(msg)
-    for h1 in h_masks:
-        for h2 in h_masks:
-            if h1 != h2 and h1 & ~h2 == 0:
-                msg = (
-                    f"(H2) antichain axiom violated: {_fmt(h1, elements)} is a "
-                    f"proper subset of {_fmt(h2, elements)}"
-                )
-                raise ValueError(msg)
-    for h1 in h_masks:
-        for h2 in h_masks:
-            if h1 == h2:
-                continue
-            for e in _bits(full & ~(h1 | h2)):
-                required = (h1 & h2) | (1 << e)
-                if not any(required & ~h3 == 0 for h3 in h_masks):
-                    msg = (
-                        f"(H3) violated for {_fmt(h1, elements)} and "
-                        f"{_fmt(h2, elements)} at {elements[e]!r}"
-                    )
-                    raise ValueError(msg)
-
-
-# --------------------------------------------------------------------------- #
-# Numeric helpers for constructors
-# --------------------------------------------------------------------------- #
-def _is_prime(n: int) -> bool:
-    """Return whether ``n`` is a prime number (trial division; small inputs)."""
-    if n < _SMALLEST_PRIME:
-        return False
-    return all(n % d != 0 for d in range(2, math.isqrt(n) + 1))
-
-
-def _column_rank_q(columns: Sequence[Sequence[Fraction]]) -> int:
-    """Return the rank of the given column vectors over the rationals."""
-    pivots: list[int] = []
-    reduced: list[list[Fraction]] = []
-    for column in columns:
-        vector = list(column)
-        for position, pivot_vector in zip(pivots, reduced, strict=True):
-            coefficient = vector[position]
-            if coefficient:
-                vector = [
-                    a - coefficient * b
-                    for a, b in zip(vector, pivot_vector, strict=True)
-                ]
-        position = next((i for i, a in enumerate(vector) if a), -1)
-        if position < 0:
-            continue
-        inverse = 1 / vector[position]
-        pivots.append(position)
-        reduced.append([a * inverse for a in vector])
-    return len(pivots)
-
-
-def _column_rank_gf(columns: Sequence[Sequence[int]], p: int) -> int:
-    """Return the rank of the given column vectors over ``GF(p)``."""
-    pivots: list[int] = []
-    reduced: list[list[int]] = []
-    for column in columns:
-        vector = [a % p for a in column]
-        for position, pivot_vector in zip(pivots, reduced, strict=True):
-            coefficient = vector[position]
-            if coefficient:
-                vector = [
-                    (a - coefficient * b) % p
-                    for a, b in zip(vector, pivot_vector, strict=True)
-                ]
-        position = next((i for i, a in enumerate(vector) if a), -1)
-        if position < 0:
-            continue
-        inverse = pow(vector[position], p - 2, p)
-        pivots.append(position)
-        reduced.append([a * inverse % p for a in vector])
-    return len(pivots)
-
-
-def _gf_scalar(value: Fraction | int, p: int) -> int:
-    """Reduce an exact scalar into ``GF(p)``.
-
-    A fraction ``a/b`` maps to ``a * b^(p-2) mod p`` — Fermat inversion of
-    the denominator, valid because ``p`` is prime.
-
-    Raises:
-        ValueError: If the denominator is divisible by ``p``, so the scalar
-            has no image in ``GF(p)``.
-    """
-    frac = Fraction(value)
-    if frac.denominator % p == 0:
-        msg = (
-            f"vector entry {value} has denominator divisible by {p}, "
-            f"so it has no image in GF({p})"
-        )
-        raise ValueError(msg)
-    return frac.numerator * pow(frac.denominator, p - 2, p) % p
-
-
-def _is_forest[V: Hashable](edges: Sequence[tuple[V, V]]) -> bool:
-    """Return whether the given edge multiset is acyclic (a forest)."""
-    parent: dict[V, V] = {}
-
-    def find(vertex: V) -> V:
-        root = vertex
-        while parent[root] != root:
-            root = parent[root]
-        while parent[vertex] != root:
-            parent[vertex], vertex = root, parent[vertex]
-        return root
-
-    for u, v in edges:
-        parent.setdefault(u, u)
-        parent.setdefault(v, v)
-        root_u, root_v = find(u), find(v)
-        if root_u == root_v:
-            return False
-        parent[root_u] = root_v
-    return True
-
-
-def _has_matching(mask: int, set_masks: Sequence[int]) -> bool:
-    """Return whether every element bit of ``mask`` gets a distinct set.
-
-    Kuhn's augmenting-path bipartite matching between the elements of
-    ``mask`` and the members of ``set_masks`` containing them.
-    """
-    matched: dict[int, int] = {}
-
-    def augment(element: int, visited: set[int]) -> bool:
-        for set_index, set_mask in enumerate(set_masks):
-            if set_mask >> element & 1 and set_index not in visited:
-                visited.add(set_index)
-                if set_index not in matched or augment(matched[set_index], visited):
-                    matched[set_index] = element
-                    return True
-        return False
-
-    return all(augment(element, set()) for element in _bits(mask))
 
 
 # --------------------------------------------------------------------------- #
@@ -504,11 +117,11 @@ class Matroid[T: Hashable]:
 
     def _mask(self, labels: Iterable[T]) -> int:
         """Convert labels to a bitmask, rejecting unknown labels."""
-        return _mask_from_labels(labels, self._index)
+        return mask_from_labels(labels, self._index)
 
     def _labels(self, mask: int) -> frozenset[T]:
         """Convert a bitmask back to a frozenset of labels."""
-        return frozenset(self.elements[b] for b in _bits(mask))
+        return frozenset(self.elements[b] for b in bits(mask))
 
     @property
     def ground_set(self) -> frozenset[T]:
@@ -575,12 +188,10 @@ class Matroid[T: Hashable]:
             ValueError: If labels are unknown or duplicated, or an axiom
                 fails (the message names the numbered axiom).
         """
-        elems = tuple(elements)
-        _require_distinct(elems)
-        index: Mapping[Hashable, int] = {e: i for i, e in enumerate(elems)}
-        masks = frozenset(_mask_from_labels(s, index) for s in independent_sets)
+        elems, index = indexed_ground_set(elements)
+        masks = frozenset(mask_from_labels(s, index) for s in independent_sets)
         if validate:
-            _check_independence_axioms(elems, masks)
+            check_independence_axioms(elems, masks)
         return cls(elems, masks)
 
     @classmethod
@@ -609,13 +220,11 @@ class Matroid[T: Hashable]:
             ValueError: If labels are unknown or duplicated, or an axiom
                 fails (the message names the numbered axiom).
         """
-        elems = tuple(elements)
-        _require_distinct(elems)
-        index: Mapping[Hashable, int] = {e: i for i, e in enumerate(elems)}
-        base_masks = frozenset(_mask_from_labels(b, index) for b in bases)
+        elems, index = indexed_ground_set(elements)
+        base_masks = frozenset(mask_from_labels(b, index) for b in bases)
         if validate:
-            _check_basis_axioms(elems, base_masks)
-        return cls(elems, _down_closure(base_masks))
+            check_basis_axioms(elems, base_masks)
+        return cls(elems, down_closure(base_masks))
 
     @classmethod
     def from_circuits(
@@ -643,19 +252,17 @@ class Matroid[T: Hashable]:
             ValueError: If labels are unknown or duplicated, or an axiom
                 fails (the message names the numbered axiom).
         """
-        elems = tuple(elements)
-        _require_distinct(elems)
-        index: Mapping[Hashable, int] = {e: i for i, e in enumerate(elems)}
-        circuit_masks = frozenset(_mask_from_labels(c, index) for c in circuits)
+        elems, index = indexed_ground_set(elements)
+        circuit_masks = frozenset(mask_from_labels(c, index) for c in circuits)
         if validate:
-            _check_circuit_axioms(elems, circuit_masks)
+            check_circuit_axioms(elems, circuit_masks)
         n = len(elems)
         dependent = bytearray(1 << n)
         for mask in range(1 << n):
             if mask in circuit_masks:
                 dependent[mask] = 1
                 continue
-            for bit in _bits(mask):
+            for bit in bits(mask):
                 if dependent[mask ^ (1 << bit)]:
                     dependent[mask] = 1
                     break
@@ -690,14 +297,13 @@ class Matroid[T: Hashable]:
             ValueError: If labels are duplicated or an axiom fails (the
                 message names the numbered axiom).
         """
-        elems = tuple(elements)
-        _require_distinct(elems)
+        elems, _ = indexed_ground_set(elements)
         n = len(elems)
         table = [
-            rank(frozenset(elems[b] for b in _bits(mask))) for mask in range(1 << n)
+            rank(frozenset(elems[b] for b in bits(mask))) for mask in range(1 << n)
         ]
         if validate:
-            _check_rank_axioms(elems, table)
+            check_rank_axioms(elems, table)
         family = frozenset(m for m in range(1 << n) if table[m] == m.bit_count())
         return cls(elems, family)
 
@@ -729,20 +335,18 @@ class Matroid[T: Hashable]:
             ValueError: If labels are duplicated, the oracle returns unknown
                 labels, or an axiom fails (the message names the axiom).
         """
-        elems = tuple(elements)
-        _require_distinct(elems)
-        index: Mapping[Hashable, int] = {e: i for i, e in enumerate(elems)}
+        elems, index = indexed_ground_set(elements)
         n = len(elems)
         table = [
-            _mask_from_labels(closure(frozenset(elems[b] for b in _bits(mask))), index)
+            mask_from_labels(closure(frozenset(elems[b] for b in bits(mask))), index)
             for mask in range(1 << n)
         ]
         if validate:
-            _check_closure_axioms(elems, table)
+            check_closure_axioms(elems, table)
         family = frozenset(
             mask
             for mask in range(1 << n)
-            if all(not table[mask ^ (1 << e)] >> e & 1 for e in _bits(mask))
+            if all(not table[mask ^ (1 << e)] >> e & 1 for e in bits(mask))
         )
         return cls(elems, family)
 
@@ -772,12 +376,10 @@ class Matroid[T: Hashable]:
             ValueError: If labels are unknown or duplicated, or an axiom
                 fails (the message names the numbered axiom).
         """
-        elems = tuple(elements)
-        _require_distinct(elems)
-        index: Mapping[Hashable, int] = {e: i for i, e in enumerate(elems)}
-        flat_masks = frozenset(_mask_from_labels(f, index) for f in flats)
+        elems, index = indexed_ground_set(elements)
+        flat_masks = frozenset(mask_from_labels(f, index) for f in flats)
         if validate:
-            _check_flat_axioms(elems, flat_masks)
+            check_flat_axioms(elems, flat_masks)
         n = len(elems)
         full = (1 << n) - 1
         table = []
@@ -790,7 +392,7 @@ class Matroid[T: Hashable]:
         family = frozenset(
             mask
             for mask in range(1 << n)
-            if all(not table[mask ^ (1 << e)] >> e & 1 for e in _bits(mask))
+            if all(not table[mask ^ (1 << e)] >> e & 1 for e in bits(mask))
         )
         return cls(elems, family)
 
@@ -820,14 +422,12 @@ class Matroid[T: Hashable]:
             ValueError: If labels are unknown or duplicated, or an axiom
                 fails (the message names the numbered axiom).
         """
-        elems = tuple(elements)
-        _require_distinct(elems)
-        index: Mapping[Hashable, int] = {e: i for i, e in enumerate(elems)}
-        h_masks = frozenset(_mask_from_labels(h, index) for h in hyperplanes)
+        elems, index = indexed_ground_set(elements)
+        h_masks = frozenset(mask_from_labels(h, index) for h in hyperplanes)
         if validate:
-            _check_hyperplane_axioms(elems, h_masks)
+            check_hyperplane_axioms(elems, h_masks)
         full = (1 << len(elems)) - 1
-        cocircuits = [[elems[b] for b in _bits(full ^ h_mask)] for h_mask in h_masks]
+        cocircuits = [[elems[b] for b in bits(full ^ h_mask)] for h_mask in h_masks]
         # (H1)-(H3) already certify the system; the complements satisfy the
         # circuit axioms by cryptomorphism, so re-validation is skipped.
         dual = cls.from_circuits(elems, cocircuits, validate=False)
@@ -868,26 +468,23 @@ class Matroid[T: Hashable]:
         if len(dimensions) > 1:
             msg = f"vectors must share one dimension, got lengths {dimensions}"
             raise ValueError(msg)
-        if field_char is not None and not _is_prime(field_char):
+        if field_char is not None and not is_prime(field_char):
             msg = f"field_char must be a prime number, got {field_char}"
             raise ValueError(msg)
-        n = len(labels)
-        family: set[int] = set()
         if field_char is None:
-            q_columns = [[Fraction(a) for a in vectors[label]] for label in labels]
-            for mask in range(1 << n):
-                chosen = [q_columns[b] for b in _bits(mask)]
-                if _column_rank_q(chosen) == mask.bit_count():
-                    family.add(mask)
+            family = linear_independence_family(
+                [[Fraction(a) for a in vectors[label]] for label in labels],
+                RATIONALS,
+            )
         else:
-            gf_columns = [
-                [_gf_scalar(a, field_char) for a in vectors[label]] for label in labels
-            ]
-            for mask in range(1 << n):
-                chosen_gf = [gf_columns[b] for b in _bits(mask)]
-                if _column_rank_gf(chosen_gf, field_char) == mask.bit_count():
-                    family.add(mask)
-        return cls(labels, frozenset(family))
+            family = linear_independence_family(
+                [
+                    [gf_scalar(a, field_char) for a in vectors[label]]
+                    for label in labels
+                ],
+                prime_field(field_char),
+            )
+        return cls(labels, family)
 
     @classmethod
     def from_graph_edges[V: Hashable](
@@ -914,9 +511,7 @@ class Matroid[T: Hashable]:
         pairs = list(edges.values())
         n = len(labels)
         family = frozenset(
-            mask
-            for mask in range(1 << n)
-            if _is_forest([pairs[b] for b in _bits(mask)])
+            mask for mask in range(1 << n) if is_forest([pairs[b] for b in bits(mask)])
         )
         return cls(labels, family)
 
@@ -942,17 +537,15 @@ class Matroid[T: Hashable]:
         Raises:
             ValueError: If labels are unknown or duplicated.
         """
-        elems = tuple(elements)
-        _require_distinct(elems)
-        index: Mapping[Hashable, int] = {e: i for i, e in enumerate(elems)}
-        set_masks = [_mask_from_labels(a, index) for a in system]
+        elems, index = indexed_ground_set(elements)
+        set_masks = [mask_from_labels(a, index) for a in system]
         n = len(elems)
         independent: set[int] = {0}
         for mask in sorted(range(1 << n), key=int.bit_count):
             if mask == 0:
                 continue
-            hereditary = all(mask ^ (1 << b) in independent for b in _bits(mask))
-            if hereditary and _has_matching(mask, set_masks):
+            hereditary = all(mask ^ (1 << b) in independent for b in bits(mask))
+            if hereditary and has_matching(mask, set_masks):
                 independent.add(mask)
         return cls(elems, frozenset(independent))
 
@@ -972,7 +565,7 @@ class Matroid[T: Hashable]:
             if mask in family:
                 table[mask] = mask.bit_count()
             else:
-                table[mask] = max(table[mask ^ (1 << b)] for b in _bits(mask))
+                table[mask] = max(table[mask ^ (1 << b)] for b in bits(mask))
         return table
 
     def rank(self, subset: Iterable[T] | None = None) -> int:
@@ -1012,7 +605,7 @@ class Matroid[T: Hashable]:
         """Closure of a subset mask via ``cl(X) = {e : r(X + e) = r(X)}``."""
         rank_here = self._rank_table[mask]
         closed = mask
-        for e in _bits(self._full_mask & ~mask):
+        for e in bits(self._full_mask & ~mask):
             if self._rank_table[mask | (1 << e)] == rank_here:
                 closed |= 1 << e
         return closed
@@ -1083,8 +676,7 @@ class Matroid[T: Hashable]:
         return frozenset(
             mask
             for mask in range(1 << len(self.elements))
-            if mask not in family
-            and all(mask ^ (1 << b) in family for b in _bits(mask))
+            if mask not in family and all(mask ^ (1 << b) in family for b in bits(mask))
         )
 
     @functools.cached_property
@@ -1183,7 +775,7 @@ class Matroid[T: Hashable]:
             return True
         covered: set[tuple[int, int]] = set()
         for circuit in self._circuit_masks:
-            members = list(_bits(circuit))
+            members = list(bits(circuit))
             covered.update(itertools.combinations(members, 2))
         return len(covered) == n * (n - 1) // 2
 
@@ -1207,7 +799,7 @@ class Matroid[T: Hashable]:
         """
         basis_mask = self._mask(basis)
         if basis_mask not in self._basis_masks:
-            msg = f"{_fmt(basis_mask, self.elements)} is not a basis"
+            msg = f"{fmt(basis_mask, self.elements)} is not a basis"
             raise ValueError(msg)
         element_mask = self._mask((element,))
         if element_mask & basis_mask:
@@ -1368,7 +960,7 @@ class Matroid[T: Hashable]:
         page, operations and structural theorems).
         """
         complements = (self._full_mask ^ b for b in self._basis_masks)
-        return Matroid(self.elements, _down_closure(complements))
+        return Matroid(self.elements, down_closure(complements))
 
     def restrict(self, subset: Iterable[T]) -> Matroid[T]:
         """Return ``M|X``: ground set ``X``, independent sets those inside it.
@@ -1382,7 +974,7 @@ class Matroid[T: Hashable]:
         kept = [i for i in range(len(self.elements)) if keep_mask >> i & 1]
         new_bit = {old: new for new, old in enumerate(kept)}
         family = frozenset(
-            sum(1 << new_bit[b] for b in _bits(mask))
+            remap(mask, new_bit)
             for mask in self.independent_masks
             if mask & ~keep_mask == 0
         )
@@ -1408,13 +1000,13 @@ class Matroid[T: Hashable]:
         """
         contract_mask = self._mask(subset)
         base_of_x = 0
-        for bit in _bits(contract_mask):
+        for bit in bits(contract_mask):
             if self._rank_table[base_of_x | (1 << bit)] > self._rank_table[base_of_x]:
                 base_of_x |= 1 << bit
         kept = [i for i in range(len(self.elements)) if not contract_mask >> i & 1]
         new_bit = {old: new for new, old in enumerate(kept)}
         family = frozenset(
-            sum(1 << new_bit[b] for b in _bits(mask))
+            remap(mask, new_bit)
             for mask in self.independent_masks
             if mask & contract_mask == 0
             and (mask | base_of_x) in self.independent_masks
@@ -1494,10 +1086,7 @@ class Matroid[T: Hashable]:
             msg = "both matroids must share the same ground set"
             raise ValueError(msg)
         translate = [self._index[e] for e in other.elements]
-        return frozenset(
-            sum(1 << translate[b] for b in _bits(mask))
-            for mask in other.independent_masks
-        )
+        return frozenset(remap(mask, translate) for mask in other.independent_masks)
 
     def union(self, other: Matroid[T]) -> Matroid[T]:
         """Return ``M1 v M2``: independent sets are unions ``I1 + I2``.
@@ -1568,10 +1157,7 @@ class Matroid[T: Hashable]:
 
         def backtrack(i: int) -> bool:
             if i == n:
-                remapped = {
-                    sum(1 << assign[b] for b in _bits(mask))
-                    for mask in self.independent_masks
-                }
+                remapped = {remap(mask, assign) for mask in self.independent_masks}
                 return remapped == other_family
             for j in range(n):
                 if not used[j] and sig_other[j] == sig_self[i]:
@@ -1604,7 +1190,7 @@ class Matroid[T: Hashable]:
                 continue
             rest = full ^ contract_mask
             wanted = m - k - contract_mask.bit_count()
-            for delete_mask in _submasks(rest):
+            for delete_mask in submasks(rest):
                 if delete_mask.bit_count() != wanted:
                     continue
                 if self._rank_table[full ^ delete_mask] != top:
@@ -1673,7 +1259,7 @@ class Matroid[T: Hashable]:
         element_column: list[T] = list(self.elements)
         basis_column: list[int | None] = [None] * len(self.elements)
         for basis_id, basis_mask in enumerate(sorted(self._basis_masks)):
-            for bit in _bits(basis_mask):
+            for bit in bits(basis_mask):
                 element_column.append(self.elements[bit])
                 basis_column.append(basis_id)
         return pd.DataFrame(
@@ -1757,27 +1343,16 @@ class Matroid[T: Hashable]:
         Returns:
             The axes drawn on. Never calls ``show`` or writes files.
         """
-        if ax is None:
-            # Deferred so core use never imports the plotting stack.
-            import matplotlib.pyplot as plt  # noqa: PLC0415
-
-            _, ax = plt.subplots()
+        ax = ensure_axes(ax)
         positions, covers = self._layout_flats()
         for low, high in covers:
             (x1, y1), (x2, y2) = positions[low], positions[high]
             ax.plot([x1, x2], [y1, y2], color="0.7", linewidth=1, zorder=1)
-        xs = [x for x, _ in positions.values()]
-        ys = [y for _, y in positions.values()]
-        ax.scatter(xs, ys, zorder=2)
-        for flat, (x, y) in positions.items():
-            ax.annotate(
-                _fmt(flat, self.elements),
-                (x, y),
-                textcoords="offset points",
-                xytext=(0, 6),
-                ha="center",
-                fontsize=8,
-            )
+        scatter_labeled(
+            ax,
+            list(positions.values()),
+            [fmt(flat, self.elements) for flat in positions],
+        )
         ax.set_axis_off()
         ax.set_title("Lattice of flats")
         return ax
@@ -1795,36 +1370,18 @@ class Matroid[T: Hashable]:
         Returns:
             The axes drawn on. Never calls ``show`` or writes files.
         """
-        if ax is None:
-            # Deferred so core use never imports the plotting stack.
-            import matplotlib.pyplot as plt  # noqa: PLC0415
-
-            _, ax = plt.subplots()
+        ax = ensure_axes(ax)
         ordered = sorted(self._basis_masks)
-        count = len(ordered)
-        positions = {
-            basis: (
-                math.cos(2 * math.pi * i / count),
-                math.sin(2 * math.pi * i / count),
-            )
-            for i, basis in enumerate(ordered)
-        }
+        positions = dict(zip(ordered, unit_circle(len(ordered)), strict=True))
         for b1, b2 in itertools.combinations(ordered, 2):
             if (b1 ^ b2).bit_count() == _EXCHANGE_DISTANCE:
                 (x1, y1), (x2, y2) = positions[b1], positions[b2]
                 ax.plot([x1, x2], [y1, y2], color="0.7", linewidth=1, zorder=1)
-        xs = [x for x, _ in positions.values()]
-        ys = [y for _, y in positions.values()]
-        ax.scatter(xs, ys, zorder=2)
-        for basis, (x, y) in positions.items():
-            ax.annotate(
-                _fmt(basis, self.elements),
-                (x, y),
-                textcoords="offset points",
-                xytext=(0, 6),
-                ha="center",
-                fontsize=8,
-            )
+        scatter_labeled(
+            ax,
+            list(positions.values()),
+            [fmt(basis, self.elements) for basis in ordered],
+        )
         ax.set_aspect("equal")
         ax.set_axis_off()
         ax.set_title("Basis exchange graph")
@@ -2020,10 +1577,10 @@ def enumerate_matroids(n: int) -> list[Matroid[int]]:
             sum(1 << i for i in combo) for combo in itertools.combinations(range(n), k)
         ]
         for pick in range(1, 1 << len(k_subsets)):
-            base_masks = frozenset(k_subsets[i] for i in _bits(pick))
-            if _basis_exchange_violation(base_masks) is not None:
+            base_masks = frozenset(k_subsets[i] for i in bits(pick))
+            if basis_exchange_violation(base_masks) is not None:
                 continue
-            candidate = Matroid(elements, _down_closure(base_masks))
+            candidate = Matroid(elements, down_closure(base_masks))
             key = (k, candidate.independent_set_counts())
             bucket = buckets.setdefault(key, [])
             if any(candidate.is_isomorphic_to(seen) for seen in bucket):
