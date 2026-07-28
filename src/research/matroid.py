@@ -19,12 +19,19 @@ import functools
 import itertools
 import math
 from collections import Counter
-from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 from typing import TYPE_CHECKING, override
 
 import pandas as pd
+
+from research._bitmask import bits as _bits
+from research._bitmask import down_closure as _down_closure
+from research._bitmask import fmt as _fmt
+from research._bitmask import mask_from_labels as _mask_from_labels
+from research._bitmask import require_distinct as _require_distinct
+from research._bitmask import submasks as _submasks
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
@@ -48,76 +55,6 @@ _EXCHANGE_DISTANCE: int = 2
 
 _SMALLEST_PRIME: int = 2
 """Smallest field characteristic accepted by :meth:`Matroid.from_vectors`."""
-
-
-# --------------------------------------------------------------------------- #
-# Bitmask helpers
-# --------------------------------------------------------------------------- #
-def _bits(mask: int) -> Iterator[int]:
-    """Yield the set bit positions of ``mask`` in ascending order."""
-    while mask:
-        low = mask & -mask
-        yield low.bit_length() - 1
-        mask ^= low
-
-
-def _submasks(mask: int) -> Iterator[int]:
-    """Yield every submask of ``mask``, including ``0`` and ``mask`` itself."""
-    sub = mask
-    while True:
-        yield sub
-        if sub == 0:
-            return
-        sub = (sub - 1) & mask
-
-
-def _down_closure(masks: Iterable[int]) -> frozenset[int]:
-    """Return the downward closure (all submasks) of the given masks."""
-    closed: set[int] = set()
-    for mask in masks:
-        closed.update(_submasks(mask))
-    return frozenset(closed)
-
-
-def _fmt(mask: int, elements: tuple[Hashable, ...]) -> str:
-    """Render a bitmask as a readable set of ground-set labels."""
-    if mask == 0:
-        return "{}"
-    return "{" + ", ".join(repr(elements[b]) for b in _bits(mask)) + "}"
-
-
-def _mask_from_labels[T: Hashable](labels: Iterable[T], index: Mapping[T, int]) -> int:
-    """Convert a collection of labels to a bitmask.
-
-    Args:
-        labels: Labels to convert; duplicates are collapsed.
-        index: Label-to-bit-position mapping for the ground set.
-
-    Returns:
-        The bitmask with one bit per distinct label.
-
-    Raises:
-        ValueError: If a label is not in the ground set.
-    """
-    mask = 0
-    for label in labels:
-        position = index.get(label)
-        if position is None:
-            msg = f"element {label!r} is not in the ground set"
-            raise ValueError(msg)
-        mask |= 1 << position
-    return mask
-
-
-def _require_distinct(elements: tuple[Hashable, ...]) -> None:
-    """Reject ground sets with repeated labels.
-
-    Raises:
-        ValueError: If two elements compare equal.
-    """
-    if len(set(elements)) != len(elements):
-        msg = f"ground set labels must be distinct, got {elements!r}"
-        raise ValueError(msg)
 
 
 # --------------------------------------------------------------------------- #
