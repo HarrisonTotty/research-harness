@@ -8,6 +8,7 @@ license = "MIT"
 authors = [{ name = "Harrison Totty", email = "harrison@totty.dev" }]
 dependencies = [
     "click>=8.4.2",
+    "matplotlib>=3.11.1",
     "pandas>=3.0.5",
 ]
 
@@ -24,6 +25,18 @@ dev = [
     "pre-commit>=4.6.1",
     "pandas-stubs>=3.0.0",
 ]
+docs = [
+    # ProperDocs is the maintained continuation of MkDocs 1.x, by its original
+    # author, and a drop-in replacement. MkDocs itself stays in the tree because
+    # `mkdocs-material` and `mkdocstrings` still require it; ProperDocs reads the
+    # same `mkdocs.plugins` and `mkdocs.themes` entry points, so both work.
+    "properdocs>=1.6.7",
+    "mkdocs-material>=9.6.0",
+    "mkdocstrings[python]>=0.30.0",
+    "mkdocs-gen-files>=0.5.0",
+    "mkdocs-literate-nav>=0.6.2",
+    "mkdocs-section-index>=0.3.10",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -33,7 +46,7 @@ build-backend = "hatchling.build"
 packages = ["src/research", "src/experiments"]
 
 [tool.uv]
-default-groups = ["dev"]
+default-groups = ["dev", "docs"]
 
 # --------------------------------------------------------------------------- #
 # Ruff — linting and formatting
@@ -41,7 +54,7 @@ default-groups = ["dev"]
 [tool.ruff]
 line-length = 88
 target-version = "py314"
-src = ["src", "tests"]
+src = ["src", "tests", "scripts/docs"]
 
 [tool.ruff.format]
 docstring-code-format = true
@@ -91,6 +104,10 @@ ban-relative-imports = "all"
 max-args = 8
 
 [tool.ruff.lint.per-file-ignores]
+# Lean is written in Unicode mathematical notation, so code that handles Lean
+# source text quotes glyphs `RUF001` reports as confusable with ASCII.
+"scripts/docs/lean_parser.py" = ["RUF001"]
+"tests/test_lean_parser.py" = ["RUF001"]
 "tests/**/*.py" = [
     "D",       # tests are self-documenting via their names
     "ANN",     # annotations add little in test bodies
@@ -103,7 +120,10 @@ max-args = 8
 # --------------------------------------------------------------------------- #
 [tool.mypy]
 python_version = "3.14"
-files = ["src", "tests"]
+files = ["src", "tests", "scripts/docs"]
+# The docs generators are standalone scripts run by `mkdocs-gen-files`, not an
+# importable package, so their directory is put on the search path directly.
+mypy_path = "scripts/docs"
 strict = true
 warn_unreachable = true
 warn_no_return = true
@@ -115,11 +135,54 @@ enable_error_code = [
     "redundant-self",
     "explicit-override",
 ]
+# Beyond `strict`: `disallow_any_generics` (already implied) only rejects bare
+# generics in annotations, so these close the remaining dynamic-typing gaps.
+disallow_any_unimported = true
+disallow_any_explicit = true
 pretty = true
 
 [[tool.mypy.overrides]]
 module = ["tests.*"]
 disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = ["research.*", "experiments.*"]
+# Scoped out of tests, where hypothesis strategies and `pytest.mark.parametrize`
+# legitimately produce `Callable[..., None]`.
+disallow_any_decorated = true
+
+# --------------------------------------------------------------------------- #
+# Pyright — static type checking (mypy is authoritative; this mirrors it for
+# editors and agents that reach for pyright instead)
+# --------------------------------------------------------------------------- #
+[tool.pyright]
+pythonVersion = "3.14"
+include = ["src", "tests", "scripts/docs"]
+extraPaths = ["src", "scripts/docs"]
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "strict"
+
+# Strict mode leaves these off; mypy's `strict` plus `enable_error_code` has
+# equivalents, so turn them on to keep the two checkers in agreement.
+reportImplicitOverride = "error"
+reportPropertyTypeMismatch = "error"
+reportUnreachable = "error"
+
+[[tool.pyright.executionEnvironments]]
+root = "tests"
+extraPaths = ["src", "scripts/docs"]
+# Mirrors the mypy override that relaxes `disallow_untyped_defs` for tests:
+# fixture parameters and decorator-heavy helpers are left unannotated.
+reportMissingParameterType = "none"
+reportUnknownArgumentType = "none"
+reportUnknownLambdaType = "none"
+reportUnknownMemberType = "none"
+reportUnknownParameterType = "none"
+reportUnknownVariableType = "none"
+reportUntypedFunctionDecorator = "none"
+# Fixtures are invoked by pytest, never by name.
+reportUnusedFunction = "none"
 
 # --------------------------------------------------------------------------- #
 # Pytest

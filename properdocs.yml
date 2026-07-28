@@ -1,0 +1,150 @@
+site_name: Research Harness
+site_description: >-
+  A computational research sandbox for the exploration, validation, and
+  publication of research topics.
+# The path component of `site_url` is where `properdocs serve` mounts the site,
+# so serving with the deployed project-page URL would put a local preview under
+# `/research-harness/`. `just docs-serve` overrides this to a root URL; only the
+# path is read, as `serve` rewrites the host and port to the address in use.
+site_url: !ENV [DOCS_SITE_URL, "https://harrisontotty.github.io/research-harness/"]
+repo_url: https://github.com/HarrisonTotty/research-harness
+repo_name: HarrisonTotty/research-harness
+edit_uri: blob/main/
+copyright: Copyright &copy; 2026 Harrison Totty
+
+docs_dir: docs
+site_dir: site
+
+# Agent scratch space (brainstorming notes, action plans) is working material,
+# not documentation, and is kept out of the built site.
+exclude_docs: |
+  agent/
+
+# Sources feed the generated API reference, and the generators themselves decide
+# how; `properdocs serve` should rebuild when any of them change.
+watch:
+  - src
+  - scripts/docs
+
+hooks:
+  - scripts/docs/hooks.py
+
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+
+theme:
+  name: material
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - content.action.edit
+    - content.code.copy
+    - navigation.indexes
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.suggest
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+
+plugins:
+  - search
+  # Generators run in order; `gen_nav` lists the sections the other two produce.
+  - gen-files:
+      scripts:
+        - scripts/docs/gen_python_reference.py
+        - scripts/docs/gen_lean_reference.py
+        - scripts/docs/gen_nav.py
+  - literate-nav:
+      nav_file: SUMMARY.md
+  - section-index
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [src]
+          # Resolves cross-references into third-party documentation, so roles
+          # like `:class:`pandas.DataFrame`` become real links.
+          inventories:
+            - https://docs.python.org/3/objects.inv
+            - https://pandas.pydata.org/docs/objects.inv
+            - https://matplotlib.org/stable/objects.inv
+            - https://click.palletsprojects.com/en/stable/objects.inv
+          options:
+            docstring_style: google
+            docstring_section_style: table
+            extensions:
+              - scripts/docs/sphinx_roles.py:SphinxRoles:
+                  # Click's inventory documents `click.Command` and friends but
+                  # registers no `click` module, so a bare reference to it can
+                  # never resolve and is rendered as a code span instead.
+                  literal_targets: [click]
+            filters: ["!^_"]
+            heading_level: 1
+            line_length: 88
+            members_order: source
+            merge_init_into_class: true
+            modernize_annotations: true
+            # Lets docstrings name a sibling symbol without qualifying it, which
+            # is what the Sphinx roles in this codebase already do.
+            scoped_crossrefs: true
+            relative_crossrefs: true
+            separate_signature: true
+            show_bases: true
+            show_labels: true
+            show_root_full_path: true
+            show_root_heading: true
+            show_signature_annotations: true
+            show_source: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            signature_crossrefs: true
+            summary: true
+            unwrap_annotated: true

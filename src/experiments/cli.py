@@ -29,6 +29,11 @@ _LOG_LEVEL_VALUES: list[str] = [level.value for level in LogLevel]
 _TIMESTAMP_FORMAT: str = "%Y%m%dT%H%M%SZ"
 """Compact, filesystem-safe UTC stamp used in default output file names."""
 
+# `...` is an explicit `Any` parameter list: an experiment body declares its own
+# click options, so its signature is a genuinely dynamic boundary.
+type ExperimentFunc = Callable[..., object]  # type: ignore[explicit-any]
+"""An experiment body: a context plus whatever options it declares itself."""
+
 
 def _default_clock() -> datetime:
     """Return the current UTC time, the default source of a run's timestamp."""
@@ -121,7 +126,7 @@ def experiment(
     *,
     results_dir: Path = io.DEFAULT_RESULTS_DIR,
     clock: Callable[[], datetime] = _default_clock,
-) -> Callable[[Callable[..., object]], click.Command]:
+) -> Callable[[ExperimentFunc], click.Command]:
     """Turn an experiment function into a :mod:`click` command.
 
     The decorated function is invoked with a freshly built
@@ -141,7 +146,7 @@ def experiment(
         A decorator producing the configured :class:`click.Command`.
     """
 
-    def decorator(func: Callable[..., object]) -> click.Command:
+    def decorator(func: ExperimentFunc) -> click.Command:
         exp_name = name if name is not None else func.__name__.replace("_", "-")
 
         @functools.wraps(func)

@@ -12,6 +12,7 @@ the exploration, validation, and publication of various research topics.
 * `docs/ref`: Reference literature (papers).
 * `docs/results`: Interpreted results from experiments.
 * `docs/theorems`: Proven mathematical theorems (with proofs).
+* `scripts/docs`: Generators and hooks for the `properdocs` documentation build.
 * `src/research`: Primary research library (Python) source code.
 * `src/experiments`: Research experiments (Python) source code.
 * `src/theorems`: Theorem proving (Lean) source code.
@@ -27,6 +28,9 @@ Python:
 
 * `just check`: Full local gate — lint, format check, type check, and tests.
 * `just coverage [args ...]`: Run the suite with coverage reporting.
+* `just docs-check`: Build the documentation, failing on any warning.
+* `just docs-serve [args ...]`: Serve the documentation with live reload.
+* `just docs`: Build the documentation site into `site/`.
 * `just experiment <name> [args ...]`: Run a parameterized experiment.
 * `just format-check`: Verify formatting without writing changes.
 * `just format`: Apply `ruff` lint autofixes, then format sources.
@@ -41,3 +45,11 @@ Lean (kept separate from `just check` because building Mathlib is slow):
 * `just lean-lint`: Run Mathlib's environment linters over the library.
 * `just lean-check`: Full Lean gate — build, then lint.
 * `just lean-clean`: Remove Lean build outputs.
+
+The site is built with `properdocs` (the maintained continuation of MkDocs 1.x)
+and configured in `properdocs.yml`. Both API references are generated during the
+build — never write them into `docs/` by hand. Python modules are documented by
+`mkdocstrings` from their sources; Lean modules by reading docstrings out of
+`src/theorems` (no `lake` build involved), so a docstring is the only way a
+declaration gets documented. The docs recipes are kept out of `just check`
+because a build resolves cross-references over the network.

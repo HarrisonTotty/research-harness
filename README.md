@@ -120,3 +120,24 @@ Mathlib cache before the first `just lean-build`.
 | `just lean-lint` | Run Mathlib's environment linters over the library. |
 | `just lean-check` | Full Lean gate: build, then lint. |
 | `just lean-clean` | Remove Lean build outputs. |
+
+### Documentation
+
+The site is built from `docs/` with [ProperDocs](https://properdocs.org/) — the
+maintained continuation of MkDocs 1.x, by its original author — and configured
+in `properdocs.yml`. It reads the same entry points as MkDocs, so the existing
+theme and plugin ecosystem works unchanged.
+
+Both API references are generated during the build rather than checked in — the
+Python one from the sources under `src/` via
+[mkdocstrings](https://mkdocstrings.github.io/), and the Lean one by reading
+module and declaration docstrings out of `src/theorems/`. Neither needs
+regenerating by hand, and the Lean reference needs no `lake` build. Cross-
+references into third-party documentation are resolved from published
+inventories, so a build needs network access.
+
+| Command | Description |
+| --- | --- |
+| `just docs` | Build the documentation site into `site/`. |
+| `just docs-serve [args ...]` | Serve the documentation with live reload. |
+| `just docs-check` | Build the documentation, failing on any warning. |

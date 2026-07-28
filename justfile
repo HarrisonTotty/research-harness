@@ -52,9 +52,29 @@ check: lint format-check typecheck test
 experiment name *args:
     uv run python -m experiments {{ name }} {{ args }}
 
+# --- Documentation ---------------------------------------------------------
+# Driven by `properdocs`, the maintained continuation of MkDocs 1.x, configured
+# in `properdocs.yml`. The Python and Lean API references are generated during
+# the build, so nothing under `docs/` needs regenerating by hand. Builds resolve
+# cross-references into third-party inventories and so need network access.
+
+# Build the documentation site into `site/`.
+docs:
+    uv run properdocs build
+
+# Serve the documentation with live reload, e.g. `just docs-serve -a :9000`.
+# `DOCS_SITE_URL` mounts the preview at `/` instead of under the deployed
+# project-page path; `serve` replaces the host and port with the ones in use.
+docs-serve *args:
+    DOCS_SITE_URL=http://localhost/ uv run properdocs serve {{ args }}
+
+# Build the documentation, failing on any warning (broken link, orphan page).
+docs-check:
+    uv run properdocs build --strict
+
 # Remove caches and build artifacts.
 clean:
-    rm -rf .ruff_cache .mypy_cache .pytest_cache .coverage htmlcov dist build
+    rm -rf .ruff_cache .mypy_cache .pytest_cache .coverage htmlcov dist build site
     find . -type d -name __pycache__ -prune -exec rm -rf {} +
 
 # --- Lean (theorem proving) ------------------------------------------------
