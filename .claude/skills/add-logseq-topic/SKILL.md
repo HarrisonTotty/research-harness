@@ -2,7 +2,7 @@
 name: add-logseq-topic
 description: Researches a topic from official and original sources, then creates a comprehensive Logseq page containing its full formal definition, properties, examples, and references. Use when the user asks to add, create, or research a topic page in Logseq, or to expand the knowledge graph with a new concept.
 argument-hint: [topic]
-allowed-tools: WebSearch, WebFetch, mcp__logseq
+allowed-tools: WebSearch, WebFetch, Task, Read, Grep, Glob, Write, Edit, Bash, mcp__logseq
 ---
 
 # Add a researched topic page to Logseq
