@@ -36,8 +36,10 @@ from research._bitmask import (
 from research._cyclic import (
     check_necklace_conditions,
     check_positroid,
+    decorated_necklace_masks,
     gale_geq,
     necklace_bases,
+    necklace_decorated,
     necklace_masks,
     positroid_witness,
 )
@@ -357,21 +359,12 @@ class Positroid[T: Hashable](Matroid[T]):
                 f"but the ground set has {n} elements"
             )
             raise ValueError(msg)
-        masks = [0] * n
-        for j in range(n):
-            target = decorated.targets[j] - 1
-            if target == j:
-                if j + 1 in decorated.clockwise_fixed:
-                    for k in range(n):
-                        masks[k] |= 1 << j
-                continue
-            span = (j - target - 1) % n
-            for k in range(n):
-                if (k - target - 1) % n <= span:
-                    masks[k] |= 1 << j
+        masks = decorated_necklace_masks(
+            decorated.targets, decorated.clockwise_fixed, n
+        )
         if validate:
-            check_necklace_conditions(elems, tuple(masks))
-        return cls._from_necklace_masks(elems, tuple(masks))
+            check_necklace_conditions(elems, masks)
+        return cls._from_necklace_masks(elems, masks)
 
     # ------------------------------------------- inherited-formulation gates
     # Every constructor inherited from Matroid is re-exposed so that no
@@ -707,30 +700,8 @@ class Positroid[T: Hashable](Matroid[T]):
                 indicates the instance was built without validation.
         """
         n = len(self.elements)
-        masks = self._necklace_position_masks
-        targets: list[int] = [0] * n
-        clockwise: set[int] = set()
-        for i in range(n):
-            current = masks[i]
-            following = masks[(i + 1) % n]
-            if not current >> i & 1:
-                targets[i] = i + 1
-                continue
-            base = current ^ (1 << i)
-            added = following & ~base
-            if added.bit_count() != 1 or base & ~following:
-                msg = (
-                    f"inconsistent Grassmann necklace at position {i + 1}; "
-                    f"was this instance built without validation?"
-                )
-                raise ValueError(msg)
-            j = added.bit_length() - 1
-            if j == i:
-                targets[i] = i + 1
-                clockwise.add(i + 1)
-            else:
-                targets[j] = i + 1
-        return DecoratedPermutation(tuple(targets), frozenset(clockwise))
+        targets, clockwise = necklace_decorated(self._necklace_position_masks, n)
+        return DecoratedPermutation(targets, clockwise)
 
     # ------------------------------------------------- computed properties
     def connected_components(self) -> frozenset[frozenset[T]]:

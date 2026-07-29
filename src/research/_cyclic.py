@@ -8,7 +8,7 @@ the necklace consistency conditions of Postnikov section 16.
 """
 
 import itertools
-from collections.abc import Hashable, Sequence
+from collections.abc import Container, Hashable, Sequence
 
 from research._bitmask import bits, fmt
 from research.matroid import Matroid
@@ -16,8 +16,10 @@ from research.matroid import Matroid
 __all__ = [
     "check_necklace_conditions",
     "check_positroid",
+    "decorated_necklace_masks",
     "gale_geq",
     "necklace_bases",
+    "necklace_decorated",
     "necklace_masks",
     "positroid_witness",
 ]
@@ -138,7 +140,7 @@ def check_necklace_conditions(
             added = following & ~base
             if base & ~following or added.bit_count() != 1:
                 msg = (
-                    f"Grassmann necklace condition violated (Postnikov "
+                    f"Grassmann necklace condition (N1) violated (Postnikov "
                     f"section 16): {elements[i]!r} is in "
                     f"I_{i + 1} = {fmt(current, elements)}, so the next "
                     f"entry must be (I_i \\ {{i}}) + {{j}}, got "
@@ -147,9 +149,78 @@ def check_necklace_conditions(
                 raise ValueError(msg)
         elif following != current:
             msg = (
-                f"Grassmann necklace condition violated (Postnikov "
+                f"Grassmann necklace condition (N2) violated (Postnikov "
                 f"section 16): {elements[i]!r} is not in "
                 f"I_{i + 1} = {fmt(current, elements)}, so the next entry "
                 f"must equal it, got {fmt(following, elements)}"
             )
             raise ValueError(msg)
+
+
+def decorated_necklace_masks(
+    targets: Sequence[int], clockwise_fixed: Container[int], n: int
+) -> tuple[int, ...]:
+    """Return the Grassmann necklace of a decorated permutation, as masks.
+
+    The transition rule read backwards: the element added passing from
+    ``I_i`` to ``I_{i+1}`` is the ``j`` with ``pi(j) = i``, so ``j`` belongs
+    to ``I_k`` exactly when ``k`` lies in the cyclic interval ``(pi(j), j]``;
+    clockwise fixed points (coloops) lie in every entry and counterclockwise
+    ones (loops) in none (Positroid page, Grassmann necklace and decorated
+    permutation blocks). ``targets`` is 1-based, in this library's stored
+    (Ardila-Rincon-Williams) direction.
+    """
+    masks = [0] * n
+    for j in range(n):
+        target = targets[j] - 1
+        if target == j:
+            if j + 1 in clockwise_fixed:
+                for k in range(n):
+                    masks[k] |= 1 << j
+            continue
+        span = (j - target - 1) % n
+        for k in range(n):
+            if (k - target - 1) % n <= span:
+                masks[k] |= 1 << j
+    return tuple(masks)
+
+
+def necklace_decorated(
+    masks: Sequence[int], n: int
+) -> tuple[tuple[int, ...], frozenset[int]]:
+    r"""Read the decorated permutation off the necklace transitions.
+
+    When ``I_{i+1}`` is ``(I_i \ {i}) + {j}`` the permutation sends ``j``
+    to ``i``; a coloop is a clockwise fixed point and a loop a
+    counterclockwise one (Positroid page, decorated permutation block).
+
+    Returns:
+        The 1-based targets and the clockwise fixed points.
+
+    Raises:
+        ValueError: If the transitions are inconsistent, which indicates
+            the necklace was built without validation.
+    """
+    targets: list[int] = [0] * n
+    clockwise: set[int] = set()
+    for i in range(n):
+        current = masks[i]
+        following = masks[(i + 1) % n]
+        if not current >> i & 1:
+            targets[i] = i + 1
+            continue
+        base = current ^ (1 << i)
+        added = following & ~base
+        if added.bit_count() != 1 or base & ~following:
+            msg = (
+                f"inconsistent Grassmann necklace at position {i + 1}; "
+                f"was this instance built without validation?"
+            )
+            raise ValueError(msg)
+        j = added.bit_length() - 1
+        if j == i:
+            targets[i] = i + 1
+            clockwise.add(i + 1)
+        else:
+            targets[j] = i + 1
+    return tuple(targets), frozenset(clockwise)
