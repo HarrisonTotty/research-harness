@@ -52,6 +52,10 @@ check: lint format-check typecheck test
 experiment name *args:
     uv run python -m experiments {{ name }} {{ args }}
 
+# Generate figures/visualizations, e.g. `just figure my_figure -f svg`.
+figure name *args:
+    uv run python -m figures {{ name }} {{ args }}
+
 # --- Documentation ---------------------------------------------------------
 # Driven by `properdocs`, the maintained continuation of MkDocs 1.x, configured
 # in `properdocs.yml`. The Python and Lean API references are generated during

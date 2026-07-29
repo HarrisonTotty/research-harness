@@ -9,12 +9,14 @@ the exploration, validation, and publication of various research topics.
 * `docs/agent/brainstorming`: General code feature brainstorming.
 * `docs/agent/plans`: Phased action plans for implementing larger features.
 * `docs/conj`: Proposed mathematical conjectures.
+* `docs/fig`: Generated figures for placement in blog posts & papers.
 * `docs/ref`: Reference literature (papers).
 * `docs/results`: Interpreted results from experiments.
 * `docs/theorems`: Proven mathematical theorems (with proofs).
 * `scripts/docs`: Generators and hooks for the `properdocs` documentation build.
 * `src/research`: Primary research library (Python) source code.
 * `src/experiments`: Research experiments (Python) source code.
+* `src/figures`: Paper & blog post figures and visualizations (Python) source code.
 * `src/theorems`: Theorem proving (Lean) source code.
 * `tests`: Unit tests.
 
@@ -32,6 +34,7 @@ Python:
 * `just docs-serve [args ...]`: Serve the documentation with live reload.
 * `just docs`: Build the documentation site into `site/`.
 * `just experiment <name> [args ...]`: Run a parameterized experiment.
+* `just figure <name> [args ...]`: Generate figures/visualizations.
 * `just format-check`: Verify formatting without writing changes.
 * `just format`: Apply `ruff` lint autofixes, then format sources.
 * `just lint`: Lint with `ruff` (reports only, writes nothing).

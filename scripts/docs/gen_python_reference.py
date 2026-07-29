@@ -13,7 +13,7 @@ from mkdocs_gen_files.nav import Nav
 _ROOT = Path(__file__).resolve().parents[2]
 _SOURCE_ROOT = _ROOT / "src"
 _OUTPUT_ROOT = Path("reference", "python")
-_PACKAGES = ("research", "experiments")
+_PACKAGES = ("research", "experiments", "figures")
 """Import packages to document, in nav order."""
 
 _KEPT_DUNDERS = frozenset({"__init__", "__main__"})

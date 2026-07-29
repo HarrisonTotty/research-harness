@@ -8,12 +8,14 @@ license = "MIT"
 authors = [{ name = "Harrison Totty", email = "harrison@totty.dev" }]
 dependencies = [
     "click>=8.4.2",
+    "cycler>=0.12.1",
     "matplotlib>=3.11.1",
     "pandas>=3.0.5",
 ]
 
 [project.scripts]
 experiment = "experiments.__main__:main"
+figure = "figures.__main__:main"
 
 [dependency-groups]
 dev = [
@@ -43,7 +45,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/research", "src/experiments"]
+packages = ["src/research", "src/experiments", "src/figures"]
 
 [tool.uv]
 default-groups = ["dev", "docs"]
@@ -146,7 +148,7 @@ module = ["tests.*"]
 disallow_untyped_defs = false
 
 [[tool.mypy.overrides]]
-module = ["research.*", "experiments.*"]
+module = ["research.*", "experiments.*", "figures.*"]
 # Scoped out of tests, where hypothesis strategies and `pytest.mark.parametrize`
 # legitimately produce `Callable[..., None]`.
 disallow_any_decorated = true
@@ -168,6 +170,16 @@ typeCheckingMode = "strict"
 reportImplicitOverride = "error"
 reportPropertyTypeMismatch = "error"
 reportUnreachable = "error"
+
+[[tool.pyright.executionEnvironments]]
+root = "src/figures"
+# Matplotlib's Axes/Figure methods take `**kwargs: Unknown` (artist properties
+# are dynamically dispatched), so pyright's unknown-type strictness would flag
+# every plotting call. Mypy stays fully strict here; only the unknown-member
+# family is relaxed.
+reportUnknownMemberType = "none"
+reportUnknownArgumentType = "none"
+reportUnknownVariableType = "none"
 
 [[tool.pyright.executionEnvironments]]
 root = "tests"

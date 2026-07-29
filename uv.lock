@@ -1078,6 +1078,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
+    { name = "cycler" },
     { name = "matplotlib" },
     { name = "pandas" },
 ]
@@ -1104,6 +1105,7 @@ docs = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.4.2" },
+    { name = "cycler", specifier = ">=0.12.1" },
     { name = "matplotlib", specifier = ">=3.11.1" },
     { name = "pandas", specifier = ">=3.0.5" },
 ]

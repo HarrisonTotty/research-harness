@@ -76,6 +76,19 @@ angles: _via chalkboard_ (i.e _traditionally_) and _computationally_ (via Lean).
 Lean proofs are often _ugly for humans_ but are _safer_ and can provide the
 scaffolding on which a more elegant, traditional proof may be built.
 
+### Figure Generation & Visualization
+
+Figure generation for papers and blog posts is parameterized similarly to
+experiments:
+
+```
+just figure <name> [args ...]
+```
+
+The above will produce one or more figures (or other visualization artifacts)
+within `docs/fig/<name>/`. The format of files within each figure's directory
+varies depending on the figure being generated.
+
 ## Development
 
 The Python stack uses [`uv`](https://docs.astral.sh/uv/) for environment and
