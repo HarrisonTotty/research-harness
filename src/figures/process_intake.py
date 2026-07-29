@@ -12,6 +12,12 @@ The graphic carries no title, standfirst, or summary chrome — the slide it goe
 on supplies those — and is saved cropped to the drawing itself rather than to
 the 16:9 frame, so it can be placed and scaled freely on the slide.
 
+Besides the complete diagram, the module writes a build-up sequence — one image
+per reveal step, each adding the next piece of the process — for walking an
+audience through it a stage at a time. Every step is rendered into the same
+frame as the whole, so the images can be stacked on one slide (or advanced
+through) without anything shifting between them.
+
 First of a series of meta-figures, one per README process phase. Regenerate
 with ``just figure process-intake``.
 """
@@ -21,6 +27,7 @@ from dataclasses import dataclass
 import matplotlib as mpl
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 from matplotlib.patches import Circle, FancyArrowPatch, FancyBboxPatch
 from matplotlib.path import Path
 
@@ -155,6 +162,24 @@ _STAGES: tuple[_Stage, ...] = (
 )
 """The pipeline, left to right."""
 
+_STEP_INPUTS: int = 1
+"""Reveal step that puts the two feeds on the canvas, before any stage."""
+
+_STEP_FIRST_STAGE: int = _STEP_INPUTS + 1
+"""Reveal step that adds SURVEY; each later stage follows one step behind."""
+
+_STEP_RETURN: int = _STEP_FIRST_STAGE + len(_STAGES)
+"""Reveal step that closes the loop with the red-link return path."""
+
+_TOTAL_STEPS: int = _STEP_RETURN
+"""Number of images in the build-up sequence; the last one is the whole
+diagram."""
+
+
+def _stage_step(index: int) -> int:
+    """Return the reveal step at which the stage at ``index`` appears."""
+    return _STEP_FIRST_STAGE + index
+
 
 def _stage_x(index: int) -> float:
     """Return the left edge of the stage box at ``index``."""
@@ -219,8 +244,12 @@ def _arrow(
     )
 
 
-def _inputs(ax: Axes) -> None:
-    """Draw the two feeds into the pipeline: the graph, and the sources."""
+def _inputs(ax: Axes, step: int) -> None:
+    """Draw the two feeds into the pipeline: the graph, and the sources.
+
+    Each feed's arrow waits for the stage it points at, so nothing ever points
+    into empty canvas.
+    """
     _box(
         ax,
         (_stage_x(0), _INPUT_BOTTOM, _STAGE_W, _INPUT_H),
@@ -277,18 +306,20 @@ def _inputs(ax: Axes) -> None:
         va="center",
     )
 
-    _arrow(
-        ax,
-        (_stage_cx(0), _INPUT_BOTTOM),
-        (_stage_cx(0), _STAGE_TOP),
-        color=style.SLATE,
-    )
-    _arrow(
-        ax,
-        (_stage_cx(1), _INPUT_BOTTOM),
-        (_stage_cx(1), _STAGE_TOP),
-        color=style.SLATE,
-    )
+    if step >= _stage_step(0):
+        _arrow(
+            ax,
+            (_stage_cx(0), _INPUT_BOTTOM),
+            (_stage_cx(0), _STAGE_TOP),
+            color=style.SLATE,
+        )
+    if step >= _stage_step(1):
+        _arrow(
+            ax,
+            (_stage_cx(1), _INPUT_BOTTOM),
+            (_stage_cx(1), _STAGE_TOP),
+            color=style.SLATE,
+        )
 
 
 def _stage(ax: Axes, index: int, stage: _Stage) -> None:
@@ -350,10 +381,12 @@ def _stage(ax: Axes, index: int, stage: _Stage) -> None:
     )
 
 
-def _flow(ax: Axes) -> None:
-    """Draw the left-to-right arrows between consecutive stages."""
+def _flow(ax: Axes, step: int) -> None:
+    """Draw the left-to-right arrows between consecutive revealed stages."""
     mid_y = _STAGE_BOTTOM + _STAGE_H / 2.0
     for index in range(len(_STAGES) - 1):
+        if step < _stage_step(index + 1):
+            continue
         _arrow(
             ax,
             (_stage_x(index) + _STAGE_W, mid_y),
@@ -362,8 +395,10 @@ def _flow(ax: Axes) -> None:
         )
 
 
-def _audit_loop(ax: Axes) -> None:
+def _audit_loop(ax: Axes, step: int) -> None:
     """Draw the audit's return edge — the gate that unlocks publication."""
+    if step < _stage_step(3):
+        return
     _arrow(
         ax,
         (_stage_cx(3), _STAGE_TOP),
@@ -374,13 +409,18 @@ def _audit_loop(ax: Axes) -> None:
     )
 
 
-def _working_files(ax: Axes) -> None:
-    """Draw the scratchpad files the middle stages write and read."""
+def _working_files(ax: Axes, step: int) -> None:
+    """Draw the scratchpad files the middle stages write and read.
+
+    A file appears with the stage that first writes it.
+    """
     files = (
         (1, "sources.md", "every fact, with its source"),
         (2, "draft.md", "the page as it will be published"),
     )
     for index, name, gloss in files:
+        if step < _stage_step(index):
+            continue
         _box(
             ax,
             (_stage_x(index), _FILE_TOP - _FILE_H, _STAGE_W, _FILE_H),
@@ -417,8 +457,10 @@ def _working_files(ax: Axes) -> None:
         )
 
 
-def _return_loop(ax: Axes) -> None:
+def _return_loop(ax: Axes, step: int) -> None:
     """Draw the red-link path from the published page back to a new survey."""
+    if step < _STEP_RETURN:
+        return
     vertices = [
         (_stage_cx(4), _STAGE_BOTTOM),
         (_stage_cx(4), _RETURN_Y),
@@ -435,21 +477,15 @@ def _return_loop(ax: Axes) -> None:
             fill=False,
         )
     )
-    ax.text(
-        (_stage_cx(0) + _stage_cx(4)) / 2.0,
-        _RETURN_Y + 0.18,
-        "a red link with no page behind it is the next intake — "
-        "targets shared by several pages go first",
-        fontsize=9,
-        color=_RETURN_COLOR,
-        ha="center",
-        va="bottom",
-    )
 
 
-@figure(name="process-intake")
-def process_intake(ctx: FigureContext) -> None:
-    """Render the Intake & Refinement diagram and save it as ``process-intake``."""
+def _render(step: int) -> Figure:
+    """Return the diagram revealed up to ``step``, in the full-diagram frame.
+
+    The frame is fixed by the layout constants rather than by what is drawn, so
+    every step in the sequence lands in an identically sized image and the
+    pieces already on screen never move as the next one arrives.
+    """
     # The figure is the drawing plus its border, and the axes spans the figure
     # with one drawing unit per inch, so the file is cropped to the graphic by
     # construction — a tight bbox would not crop it, since a full-figure axes
@@ -466,16 +502,33 @@ def process_intake(ctx: FigureContext) -> None:
     ax.set_aspect("equal")
     ax.set_axis_off()
 
-    _inputs(ax)
+    _inputs(ax, step)
     for index, stage in enumerate(_STAGES):
-        _stage(ax, index, stage)
-    _flow(ax)
-    _audit_loop(ax)
-    _working_files(ax)
-    _return_loop(ax)
+        if step >= _stage_step(index):
+            _stage(ax, index, stage)
+    _flow(ax, step)
+    _audit_loop(ax, step)
+    _working_files(ax, step)
+    _return_loop(ax, step)
+    return fig
 
+
+@figure(name="process-intake")
+def process_intake(ctx: FigureContext) -> None:
+    """Render the Intake & Refinement diagram, whole and as a build-up sequence.
+
+    Writes ``process-intake`` (the complete graphic) plus ``process-intake-NN``
+    for each reveal step, numbered in presentation order.
+    """
     # The house style saves with a tight bbox, which would re-crop and re-pad
-    # the frame that was just sized deliberately; write it as laid out.
+    # the frame that was just sized deliberately — and would crop each step to
+    # its own contents, so the sequence would jitter. Write them as laid out.
     with mpl.rc_context({"savefig.bbox": "standard", "savefig.pad_inches": 0.0}):
+        for step in range(1, _TOTAL_STEPS + 1):
+            fig = _render(step)
+            ctx.save(fig, f"process-intake-{step:02d}")
+            plt.close(fig)
+
+        fig = _render(_TOTAL_STEPS)
         ctx.save(fig, "process-intake")
-    plt.close(fig)
+        plt.close(fig)
