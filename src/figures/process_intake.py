@@ -14,9 +14,11 @@ the 16:9 frame, so it can be placed and scaled freely on the slide.
 
 Besides the complete diagram, the module writes a build-up sequence — one image
 per reveal step, each adding the next piece of the process — for walking an
-audience through it a stage at a time. Every step is rendered into the same
-frame as the whole, so the images can be stacked on one slide (or advanced
-through) without anything shifting between them.
+audience through it a stage at a time. A step reveals a stage together with
+whatever feeds it, so step *n* is stage *n* until the last step closes the
+loop. Every step is rendered into the same frame as the whole, so the images
+can be stacked on one slide (or advanced through) without anything shifting
+between them.
 
 First of a series of meta-figures, one per README process phase. Regenerate
 with ``just figure process-intake``.
@@ -162,13 +164,11 @@ _STAGES: tuple[_Stage, ...] = (
 )
 """The pipeline, left to right."""
 
-_STEP_INPUTS: int = 1
-"""Reveal step that puts the two feeds on the canvas, before any stage."""
+_STEP_FIRST_STAGE: int = 1
+"""Reveal step that adds SURVEY; each later stage follows one step behind, so
+a step number below :data:`_STEP_RETURN` is also the stage's badge number."""
 
-_STEP_FIRST_STAGE: int = _STEP_INPUTS + 1
-"""Reveal step that adds SURVEY; each later stage follows one step behind."""
-
-_STEP_RETURN: int = _STEP_FIRST_STAGE + len(_STAGES)
+_STEP_RETURN: int = _STEP_FIRST_STAGE + len(_STAGES)  # one past the last stage
 """Reveal step that closes the loop with the red-link return path."""
 
 _TOTAL_STEPS: int = _STEP_RETURN
@@ -244,12 +244,8 @@ def _arrow(
     )
 
 
-def _inputs(ax: Axes, step: int) -> None:
-    """Draw the two feeds into the pipeline: the graph, and the sources.
-
-    Each feed's arrow waits for the stage it points at, so nothing ever points
-    into empty canvas.
-    """
+def _graph_input(ax: Axes) -> None:
+    """Draw the graph feed above SURVEY, and its arrow into the stage."""
     _box(
         ax,
         (_stage_x(0), _INPUT_BOTTOM, _STAGE_W, _INPUT_H),
@@ -276,7 +272,16 @@ def _inputs(ax: Axes, step: int) -> None:
         ha="center",
         va="center",
     )
+    _arrow(
+        ax,
+        (_stage_cx(0), _INPUT_BOTTOM),
+        (_stage_cx(0), _STAGE_TOP),
+        color=style.SLATE,
+    )
 
+
+def _sources_input(ax: Axes) -> None:
+    """Draw the source-tier feed above RESEARCH, and its arrow into the stage."""
     sources_x = _stage_x(1)
     sources_w = _stage_x(2) + _STAGE_W - sources_x
     _box(
@@ -305,21 +310,12 @@ def _inputs(ax: Axes, step: int) -> None:
         ha="center",
         va="center",
     )
-
-    if step >= _stage_step(0):
-        _arrow(
-            ax,
-            (_stage_cx(0), _INPUT_BOTTOM),
-            (_stage_cx(0), _STAGE_TOP),
-            color=style.SLATE,
-        )
-    if step >= _stage_step(1):
-        _arrow(
-            ax,
-            (_stage_cx(1), _INPUT_BOTTOM),
-            (_stage_cx(1), _STAGE_TOP),
-            color=style.SLATE,
-        )
+    _arrow(
+        ax,
+        (_stage_cx(1), _INPUT_BOTTOM),
+        (_stage_cx(1), _STAGE_TOP),
+        color=style.SLATE,
+    )
 
 
 def _stage(ax: Axes, index: int, stage: _Stage) -> None:
@@ -502,7 +498,12 @@ def _render(step: int) -> Figure:
     ax.set_aspect("equal")
     ax.set_axis_off()
 
-    _inputs(ax, step)
+    # Each feed arrives with the stage that consumes it: the graph with SURVEY,
+    # the source tiers with RESEARCH.
+    if step >= _stage_step(0):
+        _graph_input(ax)
+    if step >= _stage_step(1):
+        _sources_input(ax)
     for index, stage in enumerate(_STAGES):
         if step >= _stage_step(index):
             _stage(ax, index, stage)
