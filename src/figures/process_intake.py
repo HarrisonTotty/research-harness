@@ -1,0 +1,481 @@
+"""Meta-figure: the harness's Intake & Refinement phase, as a slide graphic.
+
+Renders the first phase of the research process described in the repository
+README — how papers and primary sources become a de-duplicated, cross-linked
+concept graph in Logseq — as a single 16:9 diagram sized for a presentation
+slide. The pipeline stages, their subagents, and their working files are the
+ones the ``add-logseq-topic`` skill actually runs; the two feedback edges (the
+audit gate on publication, and red links seeding the next intake) are drawn
+because they are what make the phase a loop rather than a line.
+
+The graphic carries no title, standfirst, or summary chrome — the slide it goes
+on supplies those — and is saved cropped to the drawing itself rather than to
+the 16:9 frame, so it can be placed and scaled freely on the slide.
+
+First of a series of meta-figures, one per README process phase. Regenerate
+with ``just figure process-intake``.
+"""
+
+from dataclasses import dataclass
+
+import matplotlib as mpl
+from matplotlib import pyplot as plt
+from matplotlib.axes import Axes
+from matplotlib.patches import Circle, FancyArrowPatch, FancyBboxPatch
+from matplotlib.path import Path
+
+from figures import style
+from figures.cli import FigureContext, figure
+
+_PAD: float = 0.2
+"""Border kept around the drawing on every side, in inches."""
+
+_MARGIN_L: float = 0.6
+"""Left edge of every full-width element."""
+
+_MARGIN_R: float = 15.4
+"""Right edge of every full-width element."""
+
+_STAGE_W: float = 2.6
+"""Width of a pipeline stage box."""
+
+_STAGE_H: float = 2.3
+"""Height of a pipeline stage box."""
+
+_STAGE_GAP: float = 0.45
+"""Horizontal gap between consecutive stage boxes, holding the flow arrow."""
+
+_STAGE_TOP: float = 6.0
+"""Top edge of the stage row."""
+
+_STAGE_BOTTOM: float = _STAGE_TOP - _STAGE_H
+"""Bottom edge of the stage row."""
+
+_INPUT_BOTTOM: float = 6.55
+"""Bottom edge of the input chips, above the stage row."""
+
+_INPUT_H: float = 0.8
+"""Height of an input chip."""
+
+_FILE_TOP: float = 3.4
+"""Top edge of the working-file chips, below the stage row."""
+
+_FILE_H: float = 0.7
+"""Height of a working-file chip."""
+
+_RETURN_Y: float = 2.28
+"""Height of the horizontal run of the red-link return path."""
+
+_CONTENT_TOP: float = _INPUT_BOTTOM + _INPUT_H
+"""Top of the drawing: the upper edge of the input chips."""
+
+_CONTENT_BOTTOM: float = _RETURN_Y
+"""Bottom of the drawing: the horizontal run of the return path."""
+
+_CORNER: float = 0.12
+"""Corner rounding applied to every box, in inches."""
+
+_AUDIT_COLOR: str = style.CATEGORICAL[5]
+"""Indianred — the blog's falsification hue, carrying the audit gate."""
+
+_RETURN_COLOR: str = style.CATEGORICAL[1]
+"""Teal — carries the red-link loop, distinct from the audit loop."""
+
+
+@dataclass(frozen=True, slots=True)
+class _Stage:
+    """One box in the intake pipeline.
+
+    Body lines are pre-wrapped rather than flowed: at this size the wrap
+    points are a layout decision, not something to leave to a text engine.
+    """
+
+    number: int
+    title: str
+    body: tuple[str, ...]
+    tool: str
+
+
+_STAGES: tuple[_Stage, ...] = (
+    _Stage(
+        number=1,
+        title="SURVEY",
+        body=(
+            "search the graph for the",
+            "topic, its synonyms and",
+            "plurals — extend what",
+            "already exists, never fork it",
+        ),
+        tool="search_logseq",
+    ),
+    _Stage(
+        number=2,
+        title="RESEARCH",
+        body=(
+            "one subagent per source, run",
+            "in parallel; original sources",
+            "first, every claim verified",
+            "and attributed",
+        ),
+        tool="source-reader agents",
+    ),
+    _Stage(
+        number=3,
+        title="DRAFT",
+        body=(
+            "build the page from the fact",
+            "map alone: formal definitions,",
+            "theorems with attribution,",
+            "examples as test fixtures",
+        ),
+        tool="house page template",
+    ),
+    _Stage(
+        number=4,
+        title="AUDIT",
+        body=(
+            "a second agent diffs draft",
+            "against fact map; unsupported",
+            "claims are re-researched or",
+            "cut before anything ships",
+        ),
+        tool="draft-auditor · until CLEAN",
+    ),
+    _Stage(
+        number=5,
+        title="PUBLISH",
+        body=(
+            "transcribe section by section,",
+            "then re-read the live page and",
+            "diff it against the draft;",
+            "resolve every link",
+        ),
+        tool="logseq mcp · link check",
+    ),
+)
+"""The pipeline, left to right."""
+
+
+def _stage_x(index: int) -> float:
+    """Return the left edge of the stage box at ``index``."""
+    return _MARGIN_L + index * (_STAGE_W + _STAGE_GAP)
+
+
+def _stage_cx(index: int) -> float:
+    """Return the horizontal center of the stage box at ``index``."""
+    return _stage_x(index) + _STAGE_W / 2.0
+
+
+def _box(
+    ax: Axes,
+    rect: tuple[float, float, float, float],
+    *,
+    facecolor: str,
+    edgecolor: str = "none",
+    linewidth: float = 1.0,
+    linestyle: str = "solid",
+) -> None:
+    """Draw one rounded panel from ``rect`` as ``(x, y, width, height)``.
+
+    The position is the panel's lower-left corner, in canvas inches.
+    """
+    x, y, width, height = rect
+    ax.add_patch(
+        FancyBboxPatch(
+            (x, y),
+            width,
+            height,
+            boxstyle=f"round,pad=0,rounding_size={_CORNER}",
+            facecolor=facecolor,
+            edgecolor=edgecolor,
+            linewidth=linewidth,
+            linestyle=linestyle,
+        )
+    )
+
+
+def _arrow(
+    ax: Axes,
+    start: tuple[float, float],
+    end: tuple[float, float],
+    *,
+    color: str,
+    rad: float = 0.0,
+    linewidth: float = 1.3,
+) -> None:
+    """Draw a single arrow from ``start`` to ``end``, bowed by ``rad``."""
+    ax.add_patch(
+        FancyArrowPatch(
+            start,
+            end,
+            arrowstyle="-|>",
+            mutation_scale=13,
+            linewidth=linewidth,
+            color=color,
+            connectionstyle=f"arc3,rad={rad}",
+            shrinkA=0,
+            shrinkB=0,
+        )
+    )
+
+
+def _inputs(ax: Axes) -> None:
+    """Draw the two feeds into the pipeline: the graph, and the sources."""
+    _box(
+        ax,
+        (_stage_x(0), _INPUT_BOTTOM, _STAGE_W, _INPUT_H),
+        facecolor=style.PAPER,
+        edgecolor=style.MIST,
+        linewidth=1.0,
+    )
+    ax.text(
+        _stage_cx(0),
+        7.13,
+        "the graph so far",
+        fontsize=9.5,
+        fontweight="bold",
+        color=style.INK,
+        ha="center",
+        va="center",
+    )
+    ax.text(
+        _stage_cx(0),
+        6.83,
+        "pages, links, red links",
+        fontsize=8.5,
+        color=style.MIST,
+        ha="center",
+        va="center",
+    )
+
+    sources_x = _stage_x(1)
+    sources_w = _stage_x(2) + _STAGE_W - sources_x
+    _box(
+        ax,
+        (sources_x, _INPUT_BOTTOM, sources_w, _INPUT_H),
+        facecolor=style.PAPER,
+        edgecolor=style.MIST,
+        linewidth=1.0,
+    )
+    ax.text(
+        sources_x + sources_w / 2.0,
+        7.13,
+        "primary sources, highest tier that supports the claim",
+        fontsize=9.5,
+        fontweight="bold",
+        color=style.INK,
+        ha="center",
+        va="center",
+    )
+    ax.text(
+        sources_x + sources_w / 2.0,
+        6.83,
+        "original papers · standards & official docs · OEIS / DLMF · monographs",
+        fontsize=8.5,
+        color=style.MIST,
+        ha="center",
+        va="center",
+    )
+
+    _arrow(
+        ax,
+        (_stage_cx(0), _INPUT_BOTTOM),
+        (_stage_cx(0), _STAGE_TOP),
+        color=style.SLATE,
+    )
+    _arrow(
+        ax,
+        (_stage_cx(1), _INPUT_BOTTOM),
+        (_stage_cx(1), _STAGE_TOP),
+        color=style.SLATE,
+    )
+
+
+def _stage(ax: Axes, index: int, stage: _Stage) -> None:
+    """Draw the stage box at ``index``: badge, title, body, and tooling tag."""
+    x = _stage_x(index)
+    _box(
+        ax,
+        (x, _STAGE_BOTTOM, _STAGE_W, _STAGE_H),
+        facecolor=style.PAPER,
+        edgecolor=style.SLATE,
+        linewidth=1.4,
+    )
+
+    badge_y = _STAGE_TOP - 0.36
+    ax.add_patch(Circle((x + 0.34, badge_y), 0.17, facecolor=style.SLATE, lw=0))
+    ax.text(
+        x + 0.34,
+        badge_y,
+        str(stage.number),
+        fontsize=9.5,
+        fontweight="bold",
+        color=style.PAPER,
+        ha="center",
+        va="center",
+    )
+    ax.text(
+        x + 0.64,
+        badge_y,
+        stage.title,
+        fontsize=12,
+        fontweight="bold",
+        color=style.INK,
+        va="center",
+    )
+    ax.plot(
+        [x + 0.2, x + _STAGE_W - 0.2],
+        [_STAGE_TOP - 0.66, _STAGE_TOP - 0.66],
+        color=style.PARCHMENT,
+        linewidth=1.0,
+        solid_capstyle="butt",
+    )
+
+    for line_index, line in enumerate(stage.body):
+        ax.text(
+            x + 0.2,
+            _STAGE_TOP - 0.95 - line_index * 0.28,
+            line,
+            fontsize=8.5,
+            color=style.INK,
+            va="center",
+        )
+    ax.text(
+        x + 0.2,
+        _STAGE_BOTTOM + 0.22,
+        stage.tool,
+        fontsize=8,
+        color=style.MIST,
+        va="center",
+    )
+
+
+def _flow(ax: Axes) -> None:
+    """Draw the left-to-right arrows between consecutive stages."""
+    mid_y = _STAGE_BOTTOM + _STAGE_H / 2.0
+    for index in range(len(_STAGES) - 1):
+        _arrow(
+            ax,
+            (_stage_x(index) + _STAGE_W, mid_y),
+            (_stage_x(index + 1), mid_y),
+            color=style.SLATE,
+        )
+
+
+def _audit_loop(ax: Axes) -> None:
+    """Draw the audit's return edge — the gate that unlocks publication."""
+    _arrow(
+        ax,
+        (_stage_cx(3), _STAGE_TOP),
+        (_stage_cx(2), _STAGE_TOP),
+        color=_AUDIT_COLOR,
+        rad=0.28,
+        linewidth=1.2,
+    )
+
+
+def _working_files(ax: Axes) -> None:
+    """Draw the scratchpad files the middle stages write and read."""
+    files = (
+        (1, "sources.md", "every fact, with its source"),
+        (2, "draft.md", "the page as it will be published"),
+    )
+    for index, name, gloss in files:
+        _box(
+            ax,
+            (_stage_x(index), _FILE_TOP - _FILE_H, _STAGE_W, _FILE_H),
+            facecolor=style.PAPER,
+            edgecolor=style.MIST,
+            linewidth=1.0,
+            linestyle="dashed",
+        )
+        ax.plot(
+            [_stage_cx(index), _stage_cx(index)],
+            [_STAGE_BOTTOM, _FILE_TOP],
+            color=style.MIST,
+            linewidth=0.9,
+            linestyle=(0, (2, 2)),
+        )
+        ax.text(
+            _stage_cx(index),
+            _FILE_TOP - 0.24,
+            name,
+            fontsize=9,
+            fontweight="bold",
+            color=style.INK,
+            ha="center",
+            va="center",
+        )
+        ax.text(
+            _stage_cx(index),
+            _FILE_TOP - 0.48,
+            gloss,
+            fontsize=8,
+            color=style.MIST,
+            ha="center",
+            va="center",
+        )
+
+
+def _return_loop(ax: Axes) -> None:
+    """Draw the red-link path from the published page back to a new survey."""
+    vertices = [
+        (_stage_cx(4), _STAGE_BOTTOM),
+        (_stage_cx(4), _RETURN_Y),
+        (_stage_cx(0), _RETURN_Y),
+        (_stage_cx(0), _STAGE_BOTTOM),
+    ]
+    ax.add_patch(
+        FancyArrowPatch(
+            path=Path(vertices, [Path.MOVETO, *[Path.LINETO] * 3]),
+            arrowstyle="-|>",
+            mutation_scale=13,
+            linewidth=1.2,
+            color=_RETURN_COLOR,
+            fill=False,
+        )
+    )
+    ax.text(
+        (_stage_cx(0) + _stage_cx(4)) / 2.0,
+        _RETURN_Y + 0.18,
+        "a red link with no page behind it is the next intake — "
+        "targets shared by several pages go first",
+        fontsize=9,
+        color=_RETURN_COLOR,
+        ha="center",
+        va="bottom",
+    )
+
+
+@figure(name="process-intake")
+def process_intake(ctx: FigureContext) -> None:
+    """Render the Intake & Refinement diagram and save it as ``process-intake``."""
+    # The figure is the drawing plus its border, and the axes spans the figure
+    # with one drawing unit per inch, so the file is cropped to the graphic by
+    # construction — a tight bbox would not crop it, since a full-figure axes
+    # reports its own extent rather than the artists inside it.
+    left = _MARGIN_L - _PAD
+    right = _MARGIN_R + _PAD
+    bottom = _CONTENT_BOTTOM - _PAD
+    top = _CONTENT_TOP + _PAD
+
+    fig = plt.figure(figsize=(right - left, top - bottom))
+    ax = fig.add_axes((0.0, 0.0, 1.0, 1.0))
+    ax.set_xlim(left, right)
+    ax.set_ylim(bottom, top)
+    ax.set_aspect("equal")
+    ax.set_axis_off()
+
+    _inputs(ax)
+    for index, stage in enumerate(_STAGES):
+        _stage(ax, index, stage)
+    _flow(ax)
+    _audit_loop(ax)
+    _working_files(ax)
+    _return_loop(ax)
+
+    # The house style saves with a tight bbox, which would re-crop and re-pad
+    # the frame that was just sized deliberately; write it as laid out.
+    with mpl.rc_context({"savefig.bbox": "standard", "savefig.pad_inches": 0.0}):
+        ctx.save(fig, "process-intake")
+    plt.close(fig)
