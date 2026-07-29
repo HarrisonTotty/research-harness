@@ -4,6 +4,8 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Harrison Totty
 -/
 import Theorems.Basic
+import Theorems.Matroid
+import Theorems.Positroid
 
 /-!
 # Research Harness — Theorems
