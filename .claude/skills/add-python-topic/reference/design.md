@@ -62,7 +62,7 @@ transformations whose target exists — a stdlib/collections type, an existing
 `src/research` module, or the object's own type (duals, minors,
 restrictions). Targets whose structure has no implementation yet go in the
 spec's **transformation backlog**, not into `NotImplementedError` stubs; the
-backlog mirrors the graph's red links and is reported in Step 7.
+backlog mirrors the graph's red links and is reported in Step 8.
 
 **3. DataFrame serialization.** `to_dataframe()` returns a canonical tidy
 encoding (one row per element/relation; document the columns and orientation

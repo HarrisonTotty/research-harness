@@ -53,6 +53,6 @@ wrong, the test mistranscribed the theorem, or the page's claim is false.
 Diagnose which — shrink the failing case by hand, check it against the
 page's verbatim statement — before editing anything. Never weaken a test to
 make it pass: if the page is wrong, that is a research finding; stop and
-report it (SKILL.md, Step 6). Standard suite hygiene (determinism, seeded
+report it (SKILL.md, Step 7). Standard suite hygiene (determinism, seeded
 randomness, tmp dirs) is covered by the house Python rules and applies here
 unchanged.
