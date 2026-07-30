@@ -22,6 +22,7 @@ _DOCS_ROOT = _ROOT / "docs"
 _PROSE_SECTIONS = (
     ("conj", "Conjectures"),
     ("theorems", "Theorems"),
+    ("experiments", "Experiments"),
     ("results", "Results"),
 )
 """Hand-written Markdown sections, in nav order."""

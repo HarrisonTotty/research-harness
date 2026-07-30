@@ -9,6 +9,7 @@ the exploration, validation, and publication of various research topics.
 * `docs/agent/brainstorming`: General code feature brainstorming.
 * `docs/agent/plans`: Phased action plans for implementing larger features.
 * `docs/conj`: Proposed mathematical conjectures.
+* `docs/experiments`: Experiment design docs with pre-registered predictions.
 * `docs/fig`: Generated figures for placement in blog posts & papers.
 * `docs/ref`: Reference literature (papers).
 * `docs/results`: Interpreted results from experiments.
