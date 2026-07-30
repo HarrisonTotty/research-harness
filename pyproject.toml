@@ -110,6 +110,9 @@ max-args = 8
 # source text quotes glyphs `RUF001` reports as confusable with ASCII.
 "scripts/docs/lean_parser.py" = ["RUF001"]
 "tests/test_lean_parser.py" = ["RUF001"]
+# Figures label Logseq pages with their exact titles, several of which use an
+# en dash `RUF001` reports as confusable with a hyphen.
+"src/figures/matroid_page.py" = ["RUF001"]
 "tests/**/*.py" = [
     "D",       # tests are self-documenting via their names
     "ANN",     # annotations add little in test bodies

@@ -265,15 +265,15 @@ _STAGES: tuple[_Stage, ...] = (
             lines=(
                 "a subagent profiles the frame",
                 "against the expected grid; an",
-                "integrity finding stops here",
+                "unexplained finding stops it",
             ),
         ),
         second=_Beat(
             label="SCRIPT",
             lines=(
-                "scripts print aggregates, not",
-                "frames; grade every prediction",
-                "confirmed or contradicted",
+                "grade every prediction as",
+                "confirmed, contradicted, or",
+                "unpredicted — never raw frames",
             ),
         ),
         tool="/explore-results · data-profiler",
