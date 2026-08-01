@@ -60,11 +60,8 @@ _STAGE_TOP: float = 6.0
 _STAGE_BOTTOM: float = _STAGE_TOP - _STAGE_H
 """Bottom edge of the stage row."""
 
-_INPUT_BOTTOM: float = 6.55
-"""Bottom edge of the input chips, above the stage row."""
-
-_INPUT_H: float = 0.8
-"""Height of an input chip."""
+_ARC_CLEARANCE: float = 0.55
+"""Headroom above the stage row for the bow of the audit arc."""
 
 _FILE_TOP: float = 3.4
 """Top edge of the working-file chips, below the stage row."""
@@ -75,8 +72,8 @@ _FILE_H: float = 0.7
 _RETURN_Y: float = 2.28
 """Height of the horizontal run of the red-link return path."""
 
-_CONTENT_TOP: float = _INPUT_BOTTOM + _INPUT_H
-"""Top of the drawing: the upper edge of the input chips."""
+_CONTENT_TOP: float = _STAGE_TOP + _ARC_CLEARANCE
+"""Top of the drawing: the apex of the audit arc above the stage row."""
 
 _CONTENT_BOTTOM: float = _RETURN_Y
 """Bottom of the drawing: the horizontal run of the return path."""
@@ -241,80 +238,6 @@ def _arrow(
             shrinkA=0,
             shrinkB=0,
         )
-    )
-
-
-def _graph_input(ax: Axes) -> None:
-    """Draw the graph feed above SURVEY, and its arrow into the stage."""
-    _box(
-        ax,
-        (_stage_x(0), _INPUT_BOTTOM, _STAGE_W, _INPUT_H),
-        facecolor=style.PAPER,
-        edgecolor=style.MIST,
-        linewidth=1.0,
-    )
-    ax.text(
-        _stage_cx(0),
-        7.13,
-        "the graph so far",
-        fontsize=9.5,
-        fontweight="bold",
-        color=style.INK,
-        ha="center",
-        va="center",
-    )
-    ax.text(
-        _stage_cx(0),
-        6.83,
-        "pages, links, red links",
-        fontsize=8.5,
-        color=style.MIST,
-        ha="center",
-        va="center",
-    )
-    _arrow(
-        ax,
-        (_stage_cx(0), _INPUT_BOTTOM),
-        (_stage_cx(0), _STAGE_TOP),
-        color=style.SLATE,
-    )
-
-
-def _sources_input(ax: Axes) -> None:
-    """Draw the source-tier feed above RESEARCH, and its arrow into the stage."""
-    sources_x = _stage_x(1)
-    sources_w = _stage_x(2) + _STAGE_W - sources_x
-    _box(
-        ax,
-        (sources_x, _INPUT_BOTTOM, sources_w, _INPUT_H),
-        facecolor=style.PAPER,
-        edgecolor=style.MIST,
-        linewidth=1.0,
-    )
-    ax.text(
-        sources_x + sources_w / 2.0,
-        7.13,
-        "primary sources, highest tier that supports the claim",
-        fontsize=9.5,
-        fontweight="bold",
-        color=style.INK,
-        ha="center",
-        va="center",
-    )
-    ax.text(
-        sources_x + sources_w / 2.0,
-        6.83,
-        "original papers · standards & official docs · OEIS / DLMF · monographs",
-        fontsize=8.5,
-        color=style.MIST,
-        ha="center",
-        va="center",
-    )
-    _arrow(
-        ax,
-        (_stage_cx(1), _INPUT_BOTTOM),
-        (_stage_cx(1), _STAGE_TOP),
-        color=style.SLATE,
     )
 
 
@@ -498,12 +421,6 @@ def _render(step: int) -> Figure:
     ax.set_aspect("equal")
     ax.set_axis_off()
 
-    # Each feed arrives with the stage that consumes it: the graph with SURVEY,
-    # the source tiers with RESEARCH.
-    if step >= _stage_step(0):
-        _graph_input(ax)
-    if step >= _stage_step(1):
-        _sources_input(ax)
     for index, stage in enumerate(_STAGES):
         if step >= _stage_step(index):
             _stage(ax, index, stage)
