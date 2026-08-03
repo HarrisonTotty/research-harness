@@ -18,11 +18,13 @@ specialized **subagents** defined in `.claude/agents/`. The subagents fall into
 two roles:
 
 * **Context isolators** (`source-reader`, `mathlib-scout`, `data-profiler`,
-  `literature-checker`) read bulky material — papers, Mathlib source, raw
-  result DataFrames — and return distilled, provenance-carrying summaries, so
-  the raw material never enters the main conversation.
+  `literature-checker`, `counterexample-hunter`) read or produce bulky
+  material — papers, Mathlib source, raw result DataFrames, counterexample
+  sweeps — and return distilled, provenance-carrying summaries, so the raw
+  material never enters the main conversation.
 * **Fresh-eyes auditors** (`draft-auditor`, `test-auditor`,
-  `statement-auditor`, `experiment-auditor`, `results-auditor`) independently
+  `statement-auditor`, `experiment-auditor`, `results-auditor`,
+  `conjecture-auditor`, `proof-auditor`) independently
   re-check a deliverable against its specification and must return `CLEAN`
   before the skill may proceed. This guards against the failure mode where the
   work and its verification share a single misreading: an implementation and
@@ -37,6 +39,7 @@ two roles:
 | Experimentation | `/design-experiment`, `/add-experiment` | — | `experiment-auditor` |
 | Exploration | `/explore-results` | `data-profiler`, `literature-checker` | `results-auditor` |
 | Feedback | `/critique-results` | `literature-checker` | — |
+| Conjecture & Theorem Proving | `/add-conjecture`, `/attack-conjecture` | `counterexample-hunter`, `mathlib-scout`, `literature-checker` | `statement-auditor`, `conjecture-auditor`, `proof-auditor` |
 
 Each skill also maintains working files (fact maps, design specs, coverage
 maps, drafts) in the session scratchpad as ground truth that survives context
@@ -214,11 +217,46 @@ angles: _via chalkboard_ (i.e _traditionally_) and _computationally_ (via Lean).
 Lean proofs are often _ugly for humans_ but are _safer_ and can provide the
 scaffolding on which a more elegant, traditional proof may be built.
 
-This phase has no dedicated skill yet — it starts from the informal-conjecture
-notes that `/critique-results` accumulates in Logseq and is worked
-interactively. The Lean side reuses the `/add-lean-topic` machinery where it
-applies: `mathlib-scout` surveys for what the proof can lean on, and the
-state-first / `statement-auditor` / prove discipline carries over.
+The phase is split across two skills, both interactive — choosing the right
+statement is a judgment call, and proof work is a dialogue:
+
+* `/add-conjecture <conjecture or line of inquiry>` turns an
+  informal-conjecture note into an audited `docs/conj/<name>.md` plus a
+  committed Lean statement. The literature and Mathlib are checked *first* —
+  a conjecture that is already a known theorem is intake work, and an
+  already-refuted one is a bug hunt in the experiments that suggested it.
+  The statement is drafted at explicit checkpoints (every quantifier and
+  side condition, the minimal-vs-natural generality dial, the
+  `src/research`/Mathlib vocabulary), then hammered by a
+  `counterexample-hunter` subagent over ranges *beyond* what the experiments
+  swept — the experiments motivated the conjecture; they cannot also be its
+  stress test. A refutation here is cheap and forces a refinement that makes
+  the conjecture better. The survivor is committed as a `def ... : Prop`
+  (the way Mathlib states open problems — it type-checks with no proof
+  obligation, so the no-`sorry` rule holds), gated on `statement-auditor`,
+  and the published page — evidence quoted with the ranges actually swept,
+  never blurred past the stress-test coverage — is gated on
+  `conjecture-auditor`.
+* `/attack-conjecture <name>` works proof sessions against the page. The
+  attack is one lemma DAG viewed from both angles: chalkboard sketches are
+  the plan's prose, and each lemma runs Lean-first under the
+  `/add-lean-topic` discipline (state, audit, `plausible`, then prove) with
+  a per-lemma effort cap so sessions end with breadth rather than one
+  heroic stuck proof. Every status change is written through to the doc as
+  it happens — the deliverable of a session is *recorded progress*, and no
+  `sorry` is ever left behind. When the main theorem closes, promotion rides
+  along: a clean axiom audit, a `docs/theorems/<name>.md` written *from* the
+  Lean proof and gated on `proof-auditor` (so the prose can never tell a
+  nicer story than what was proven), and the page moves from `docs/conj/`
+  to `docs/theorems/`. Refuted conjectures stay in `docs/conj/` under a
+  **Refuted** banner — the counterexample often matters more than the
+  conjecture did.
+
+The `Prop` def lives in `src/theorems/Theorems/Conjectures/` permanently;
+the proving theorem lands in its topic module and references the def
+literally, so the proposition audited at conjecture time is the exact term
+proven at theorem time — zero drift between what the evidence supported and
+what the proof establishes.
 
 ### Figure Generation & Visualization
 
