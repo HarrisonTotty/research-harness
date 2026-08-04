@@ -65,10 +65,10 @@ _PAD: float = 0.2
 _MARGIN_L: float = 0.6
 """Left edge of every full-width element."""
 
-_MARGIN_R: float = 15.4
+_MARGIN_R: float = 17.4
 """Right edge of every full-width element."""
 
-_STAGE_W: float = 2.6
+_STAGE_W: float = 3.0
 """Width of a pipeline stage box."""
 
 _STAGE_H: float = 3.8
@@ -86,19 +86,19 @@ _STAGE_BOTTOM: float = _STAGE_TOP - _STAGE_H
 _INPUT_BOTTOM: float = 6.55
 """Bottom edge of the input chip, above the stage row."""
 
-_INPUT_H: float = 0.8
+_INPUT_H: float = 0.9
 """Height of the input chip."""
 
-_FIRST_LABEL_Y: float = _STAGE_TOP - 0.98
+_FIRST_LABEL_Y: float = _STAGE_TOP - 1.10
 """Baseline of the first beat's label inside a stage box."""
 
-_SECOND_LABEL_Y: float = _STAGE_TOP - 2.44
+_SECOND_LABEL_Y: float = _STAGE_TOP - 2.40
 """Baseline of the second beat's label inside a stage box."""
 
-_BEAT_DIVIDER_Y: float = _STAGE_TOP - 2.12
+_BEAT_DIVIDER_Y: float = _STAGE_TOP - 2.10
 """Height of the hairline separating a stage's two beats."""
 
-_LINE_STEP: float = 0.28
+_LINE_STEP: float = 0.34
 """Vertical distance between consecutive body lines."""
 
 _GATE_SPAN: float = 0.45
@@ -114,17 +114,17 @@ keeps them clear of the audit loops, which are centered on the box."""
 _FILE_TOP: float = 1.9
 """Top edge of the artifact chips, below the stage row."""
 
-_FILE_H: float = 0.7
+_FILE_H: float = 0.9
 """Height of an artifact chip."""
 
-_PREREG_Y: float = 0.95
+_PREREG_Y: float = 0.65
 """Height of the horizontal run of the pre-registration span, below the chips."""
 
 _PREREG_ENTRY_Y: float = _STAGE_BOTTOM + 0.5
 """Height at which the pre-registration span enters ANALYZE, below the flow
 arrow that shares the same gap."""
 
-_RETURN_Y: float = 0.42
+_RETURN_Y: float = 0.25
 """Height of the horizontal run of the write-back path."""
 
 _SPINE_X: float = _MARGIN_L - 0.32
@@ -196,20 +196,18 @@ _STAGES: tuple[_Stage, ...] = (
         first=_Beat(
             label="CHECKPOINTS",
             lines=(
-                "hypothesis, falsification,",
-                "space, controls, seeds, schema",
-                "— one agreement at a time",
+                "hypothesis · controls ·",
+                "seeds · schema, one by one",
             ),
         ),
         second=_Beat(
             label="PRE-REGISTER",
             lines=(
-                "predict per region, each with",
-                "its citation, and mark where",
-                "no prediction exists at all",
+                "predict per region, cited;",
+                "mark the unpredicted",
             ),
         ),
-        tool="/design-experiment · with you",
+        tool="/design-experiment",
     ),
     _Stage(
         number=2,
@@ -217,20 +215,18 @@ _STAGES: tuple[_Stage, ...] = (
         first=_Beat(
             label="BUILD",
             lines=(
-                "one @experiment module whose",
-                "CLI defaults are the designed",
-                "sweep; seeds threaded, logged",
+                "one module whose defaults",
+                "are the designed sweep",
             ),
         ),
         second=_Beat(
             label="PILOT",
             lines=(
-                "a few cells into pilot/, never",
-                "data/results — check schema,",
-                "runtime, variance, then stop",
+                "a few cells only — check",
+                "schema, runtime, variance",
             ),
         ),
-        tool="/add-experiment · pilot first",
+        tool="/add-experiment · pilot",
     ),
     _Stage(
         number=3,
@@ -238,20 +234,18 @@ _STAGES: tuple[_Stage, ...] = (
         first=_Beat(
             label="SWEEP",
             lines=(
-                "you launch the full grid; a",
-                "clean audit is what unlocks",
-                "it, and runs cost real time",
+                "you launch the full grid —",
+                "a clean audit unlocks it",
             ),
         ),
         second=_Beat(
             label="ARTIFACTS",
             lines=(
-                "one timestamped frame per run,",
-                "beside a meta.json recording",
-                "every seed, param, and commit",
+                "a timestamped frame beside",
+                "meta.json: seeds, commit",
             ),
         ),
-        tool="just experiment <name> [args]",
+        tool="just experiment <name>",
     ),
     _Stage(
         number=4,
@@ -259,20 +253,18 @@ _STAGES: tuple[_Stage, ...] = (
         first=_Beat(
             label="PROFILE",
             lines=(
-                "a subagent profiles the frame",
-                "against the expected grid; an",
-                "unexplained finding stops it",
+                "profile the frame against",
+                "the expected grid first",
             ),
         ),
         second=_Beat(
             label="SCRIPT",
             lines=(
-                "grade every prediction as",
-                "confirmed, contradicted, or",
-                "unpredicted — never raw frames",
+                "grade every prediction,",
+                "never from raw frames",
             ),
         ),
-        tool="/explore-results · data-profiler",
+        tool="/explore-results · profiler",
     ),
     _Stage(
         number=5,
@@ -280,17 +272,15 @@ _STAGES: tuple[_Stage, ...] = (
         first=_Beat(
             label="TRIAGE",
             lines=(
-                "check every surprise against",
-                "the graph and the papers — a",
-                "contradiction is a bug first",
+                "a contradiction with the",
+                "literature is a bug first",
             ),
         ),
         second=_Beat(
             label="WRITE",
             lines=(
-                "draft from the printed numbers",
-                "alone, audit, publish, then",
-                "note the outcome in Logseq",
+                "draft from the numbers,",
+                "audit, publish, write back",
             ),
         ),
         tool="literature-checker · Logseq",
@@ -302,7 +292,7 @@ _CHIPS: tuple[_Chip, ...] = (
     _Chip(
         index=0,
         name="docs/experiments/<name>.md",
-        gloss="the design, frozen at first run",
+        gloss="frozen at the first run",
         durable=True,
     ),
     _Chip(
@@ -462,9 +452,9 @@ def _hypothesis_input(ax: Axes) -> None:
     )
     ax.text(
         _stage_cx(0),
-        7.13,
+        _INPUT_BOTTOM + 0.62,
         "the hypothesis",
-        fontsize=9.5,
+        fontsize=12,
         fontweight="bold",
         color=style.INK,
         ha="center",
@@ -472,9 +462,9 @@ def _hypothesis_input(ax: Axes) -> None:
     )
     ax.text(
         _stage_cx(0),
-        6.83,
-        "a question, a claim, a follow-up",
-        fontsize=8.5,
+        _INPUT_BOTTOM + 0.28,
+        "question, claim, follow-up",
+        fontsize=12,
         color=style.MIST,
         ha="center",
         va="center",
@@ -494,7 +484,7 @@ def _beat(ax: Axes, index: int, beat: _Beat, top: float) -> None:
         x + 0.2,
         top,
         beat.label,
-        fontsize=8.5,
+        fontsize=12,
         fontweight="bold",
         color=style.SLATE,
         va="center",
@@ -502,9 +492,9 @@ def _beat(ax: Axes, index: int, beat: _Beat, top: float) -> None:
     for line_index, line in enumerate(beat.lines):
         ax.text(
             x + 0.2,
-            top - 0.30 - line_index * _LINE_STEP,
+            top - 0.38 - line_index * _LINE_STEP,
             line,
-            fontsize=8.5,
+            fontsize=12,
             color=style.INK,
             va="center",
         )
@@ -521,28 +511,28 @@ def _stage(ax: Axes, index: int, stage: _Stage) -> None:
         linewidth=1.4,
     )
 
-    badge_y = _STAGE_TOP - 0.36
-    ax.add_patch(Circle((x + 0.34, badge_y), 0.17, facecolor=style.SLATE, lw=0))
+    badge_y = _STAGE_TOP - 0.40
+    ax.add_patch(Circle((x + 0.38, badge_y), 0.22, facecolor=style.SLATE, lw=0))
     ax.text(
-        x + 0.34,
+        x + 0.38,
         badge_y,
         str(stage.number),
-        fontsize=9.5,
+        fontsize=12,
         fontweight="bold",
         color=style.PAPER,
         ha="center",
         va="center",
     )
     ax.text(
-        x + 0.64,
+        x + 0.72,
         badge_y,
         stage.title,
-        fontsize=12,
+        fontsize=18,
         fontweight="bold",
         color=style.INK,
         va="center",
     )
-    _rule(ax, index, _STAGE_TOP - 0.66)
+    _rule(ax, index, _STAGE_TOP - 0.78)
 
     _beat(ax, index, stage.first, _FIRST_LABEL_Y)
     _rule(ax, index, _BEAT_DIVIDER_Y)
@@ -550,9 +540,9 @@ def _stage(ax: Axes, index: int, stage: _Stage) -> None:
 
     ax.text(
         x + 0.2,
-        _STAGE_BOTTOM + 0.22,
+        _STAGE_BOTTOM + 0.30,
         stage.tool,
-        fontsize=8,
+        fontsize=12,
         color=style.MIST,
         va="center",
     )
@@ -615,9 +605,9 @@ def _artifacts(ax: Axes, step: int) -> None:
         )
         ax.text(
             _stage_cx(chip.index),
-            _FILE_TOP - 0.24,
+            _FILE_TOP - 0.28,
             chip.name,
-            fontsize=9,
+            fontsize=12,
             fontweight="bold",
             color=style.INK,
             ha="center",
@@ -625,9 +615,9 @@ def _artifacts(ax: Axes, step: int) -> None:
         )
         ax.text(
             _stage_cx(chip.index),
-            _FILE_TOP - 0.48,
+            _FILE_TOP - 0.62,
             chip.gloss,
-            fontsize=8,
+            fontsize=12,
             color=style.MIST,
             ha="center",
             va="center",

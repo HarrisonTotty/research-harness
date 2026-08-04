@@ -47,10 +47,10 @@ _PAD: float = 0.2
 _MARGIN_L: float = 0.6
 """Left edge of every full-width element."""
 
-_MARGIN_R: float = 15.4
+_MARGIN_R: float = 17.4
 """Right edge of every full-width element."""
 
-_STAGE_W: float = 2.6
+_STAGE_W: float = 3.0
 """Width of a pipeline stage box."""
 
 _STAGE_H: float = 3.8
@@ -68,28 +68,28 @@ _STAGE_BOTTOM: float = _STAGE_TOP - _STAGE_H
 _INPUT_BOTTOM: float = 6.55
 """Bottom edge of the input chip, above the stage row."""
 
-_INPUT_H: float = 0.8
+_INPUT_H: float = 0.9
 """Height of the input chip."""
 
-_PYTHON_LABEL_Y: float = _STAGE_TOP - 0.98
+_PYTHON_LABEL_Y: float = _STAGE_TOP - 1.10
 """Baseline of the Python track's label inside a stage box."""
 
-_LEAN_LABEL_Y: float = _STAGE_TOP - 2.44
+_LEAN_LABEL_Y: float = _STAGE_TOP - 2.40
 """Baseline of the Lean track's label inside a stage box."""
 
-_TRACK_DIVIDER_Y: float = _STAGE_TOP - 2.12
+_TRACK_DIVIDER_Y: float = _STAGE_TOP - 2.10
 """Height of the hairline separating the two language tracks."""
 
-_LINE_STEP: float = 0.28
+_LINE_STEP: float = 0.34
 """Vertical distance between consecutive body lines."""
 
 _FILE_TOP: float = 1.9
 """Top edge of the working-file chips, below the stage row."""
 
-_FILE_H: float = 0.7
+_FILE_H: float = 0.9
 """Height of a working-file chip."""
 
-_RETURN_Y: float = 0.75
+_RETURN_Y: float = 0.6
 """Height of the horizontal run of the write-back path."""
 
 _SPINE_X: float = _MARGIN_L - 0.32
@@ -131,13 +131,11 @@ _STAGES: tuple[_Stage, ...] = (
         number=1,
         title="SURVEY",
         python=(
-            "read what src/research already",
-            "has and extend its shape —",
-            "never open a second style",
+            "read src/research, extend",
+            "its shape — never fork it",
         ),
         lean=(
-            "map every claim onto Mathlib",
-            "first — parallel scout agents;",
+            "map claims onto Mathlib —",
             "never redefine what it has",
         ),
         tool="page.md · mathlib-scout",
@@ -146,14 +144,12 @@ _STAGES: tuple[_Stage, ...] = (
         number=2,
         title="MAP",
         python=(
-            "spec.md maps page section to",
-            "code artifact: representation,",
-            "constructors, method by method",
+            "spec.md maps each section",
+            "to its code artifact",
         ),
         lean=(
-            "coverage.md rules on each",
-            "claim: reuse · extend ·",
-            "define · backlog",
+            "coverage.md rules: reuse ·",
+            "extend · define · backlog",
         ),
         tool="every entry cites its block",
     ),
@@ -161,13 +157,11 @@ _STAGES: tuple[_Stage, ...] = (
         number=3,
         title="BUILD",
         python=(
-            "implement the module, then the",
-            "suite: examples become",
-            "fixtures, theorems properties",
+            "examples become fixtures,",
+            "theorems become properties",
         ),
         lean=(
-            "state every declaration with",
-            "docstring and attribution;",
+            "state every declaration;",
             "proof bodies stay sorry",
         ),
         tool="docstrings cite the page",
@@ -176,14 +170,12 @@ _STAGES: tuple[_Stage, ...] = (
         number=4,
         title="AUDIT",
         python=(
-            "test-auditor diffs the suite",
-            "against page.md — one reading",
-            "wrote both; this is a second",
+            "test-auditor diffs suite",
+            "against the page itself",
         ),
         lean=(
-            "statement-auditor diffs every",
-            "statement against the map —",
-            "prove nothing unaudited",
+            "statements checked against",
+            "the map before proving",
         ),
         tool="re-dispatch until CLEAN",
     ),
@@ -191,14 +183,12 @@ _STAGES: tuple[_Stage, ...] = (
         number=5,
         title="GATE",
         python=(
-            "just check — a red test is a",
-            "bug, a bad transcription, or",
-            "a false claim on the page",
+            "just check — a red test is",
+            "a bug or a false claim",
         ),
         lean=(
-            "discharge every sorry, then",
-            "just lean-check and audit the",
-            "axioms: no sorryAx escapes",
+            "discharge every sorry;",
+            "lean-check, audit axioms",
         ),
         tool="the build audits the graph",
     ),
@@ -308,9 +298,9 @@ def _page_input(ax: Axes) -> None:
     )
     ax.text(
         _stage_cx(0),
-        7.13,
+        _INPUT_BOTTOM + 0.62,
         "the Logseq page",
-        fontsize=9.5,
+        fontsize=12,
         fontweight="bold",
         color=style.INK,
         ha="center",
@@ -318,9 +308,9 @@ def _page_input(ax: Axes) -> None:
     )
     ax.text(
         _stage_cx(0),
-        6.83,
-        "definition, theorems, examples",
-        fontsize=8.5,
+        _INPUT_BOTTOM + 0.28,
+        "defs, theorems, examples",
+        fontsize=12,
         color=style.MIST,
         ha="center",
         va="center",
@@ -342,7 +332,7 @@ def _track(
         x + 0.2,
         top,
         label,
-        fontsize=8.5,
+        fontsize=12,
         fontweight="bold",
         color=style.SLATE,
         va="center",
@@ -350,9 +340,9 @@ def _track(
     for line_index, line in enumerate(lines):
         ax.text(
             x + 0.2,
-            top - 0.30 - line_index * _LINE_STEP,
+            top - 0.38 - line_index * _LINE_STEP,
             line,
-            fontsize=8.5,
+            fontsize=12,
             color=style.INK,
             va="center",
         )
@@ -369,28 +359,28 @@ def _stage(ax: Axes, index: int, stage: _Stage) -> None:
         linewidth=1.4,
     )
 
-    badge_y = _STAGE_TOP - 0.36
-    ax.add_patch(Circle((x + 0.34, badge_y), 0.17, facecolor=style.SLATE, lw=0))
+    badge_y = _STAGE_TOP - 0.40
+    ax.add_patch(Circle((x + 0.38, badge_y), 0.22, facecolor=style.SLATE, lw=0))
     ax.text(
-        x + 0.34,
+        x + 0.38,
         badge_y,
         str(stage.number),
-        fontsize=9.5,
+        fontsize=12,
         fontweight="bold",
         color=style.PAPER,
         ha="center",
         va="center",
     )
     ax.text(
-        x + 0.64,
+        x + 0.72,
         badge_y,
         stage.title,
-        fontsize=12,
+        fontsize=18,
         fontweight="bold",
         color=style.INK,
         va="center",
     )
-    _rule(ax, index, _STAGE_TOP - 0.66)
+    _rule(ax, index, _STAGE_TOP - 0.78)
 
     _track(ax, index, "PYTHON", stage.python, _PYTHON_LABEL_Y)
     _rule(ax, index, _TRACK_DIVIDER_Y)
@@ -398,9 +388,9 @@ def _stage(ax: Axes, index: int, stage: _Stage) -> None:
 
     ax.text(
         x + 0.2,
-        _STAGE_BOTTOM + 0.22,
+        _STAGE_BOTTOM + 0.30,
         stage.tool,
-        fontsize=8,
+        fontsize=12,
         color=style.MIST,
         va="center",
     )
@@ -463,9 +453,9 @@ def _working_files(ax: Axes, step: int) -> None:
         )
         ax.text(
             _stage_cx(index),
-            _FILE_TOP - 0.24,
+            _FILE_TOP - 0.28,
             name,
-            fontsize=9,
+            fontsize=12,
             fontweight="bold",
             color=style.INK,
             ha="center",
@@ -473,9 +463,9 @@ def _working_files(ax: Axes, step: int) -> None:
         )
         ax.text(
             _stage_cx(index),
-            _FILE_TOP - 0.48,
+            _FILE_TOP - 0.62,
             gloss,
-            fontsize=8,
+            fontsize=12,
             color=style.MIST,
             ha="center",
             va="center",

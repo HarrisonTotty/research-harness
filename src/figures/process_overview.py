@@ -19,7 +19,7 @@ boxes:
 * the **bug-first return** (indianred) runs from EXPLORATION back to
   DEVELOPMENT, because a contradiction with the recorded literature is a bug
   in the code until proven otherwise;
-* the **refutation return** (indianred) runs from THEOREM PROVING back to
+* the **refutation return** (indianred) runs from PROVING back to
   EXPLORATION, because a counterexample found while stating a conjecture
   re-opens the results that suggested it;
 * the **write-back rail** (purple) runs from every phase that builds something
@@ -65,13 +65,13 @@ _PAD: float = 0.2
 _MARGIN_L: float = 0.6
 """Left edge of every full-width element."""
 
-_MARGIN_R: float = 15.4
+_MARGIN_R: float = 17.4
 """Right edge of every full-width element."""
 
-_STAGE_W: float = 2.6
+_STAGE_W: float = 3.0
 """Width of a phase box."""
 
-_STAGE_H: float = 4.09
+_STAGE_H: float = 4.55
 """Height of a phase box; it carries prose, commands, and the audit gate."""
 
 _STAGE_GAP: float = 0.45
@@ -83,31 +83,31 @@ _STAGE_TOP: float = 8.0
 _STAGE_BOTTOM: float = _STAGE_TOP - _STAGE_H
 """Bottom edge of the phase row."""
 
-_HEAD_RULE_Y: float = _STAGE_TOP - 0.66
+_HEAD_RULE_Y: float = _STAGE_TOP - 0.78
 """Height of the hairline under a phase's title."""
 
-_PROSE_TOP_Y: float = _STAGE_TOP - 0.98
+_PROSE_TOP_Y: float = _STAGE_TOP - 1.10
 """Baseline of the first prose line inside a phase box."""
 
-_LINE_STEP: float = 0.28
+_LINE_STEP: float = 0.34
 """Vertical distance between consecutive body lines."""
 
-_GATE_RULE_Y: float = _STAGE_BOTTOM + 0.81
+_GATE_RULE_Y: float = _STAGE_BOTTOM + 0.96
 """Height of the hairline separating the audit gate from the commands."""
 
-_COMMAND_CENTER_Y: float = _GATE_RULE_Y + 0.68
+_COMMAND_CENTER_Y: float = _GATE_RULE_Y + 0.90
 """Middle of the band holding a phase's commands. The list is centered on it
 rather than anchored to either end: the phases run from one command to four,
 and a centered block leaves that difference as even margin instead of a hole
 under the prose."""
 
-_GATE_TOP_Y: float = _GATE_RULE_Y - 0.27
+_GATE_TOP_Y: float = _GATE_RULE_Y - 0.32
 """Baseline of the first audit-gate line."""
 
 _INPUT_BOTTOM: float = 8.55
 """Bottom edge of the input and output chips, above the phase row."""
 
-_INPUT_H: float = 0.8
+_INPUT_H: float = 0.9
 """Height of the input and output chips."""
 
 _BUG_Y: float = 8.62
@@ -128,7 +128,7 @@ on the same box."""
 _FILE_TOP: float = _STAGE_BOTTOM - 0.3
 """Top edge of the artifact chips, below the phase row."""
 
-_FILE_H: float = 0.7
+_FILE_H: float = 0.9
 """Height of an artifact chip."""
 
 _WRITEBACK_Y: float = _FILE_TOP - _FILE_H - 0.7
@@ -190,34 +190,31 @@ _PHASES: tuple[_Phase, ...] = (
         number=1,
         title="INTAKE",
         prose=(
-            "papers and primary sources",
-            "become one page per concept —",
-            "read by a subagent each, so",
-            "every fact keeps its source",
+            "papers become one page",
+            "per concept; every fact",
+            "keeps its source",
         ),
         commands=("/add-logseq-topic",),
-        gate=("draft-auditor · until CLEAN", "link check on the live page"),
+        gate=("draft-auditor · CLEAN", "link check on live page"),
     ),
     _Phase(
         number=2,
         title="DEVELOPMENT",
         prose=(
-            "each page becomes a tested",
-            "Python structure and a proved",
-            "Lean module — the page is the",
-            "spec, Mathlib the library",
+            "each page becomes tested",
+            "Python and proved Lean —",
+            "the page is the spec",
         ),
         commands=("/add-python-topic", "/add-lean-topic"),
-        gate=("test-auditor · just check", "statement-auditor · no sorry"),
+        gate=("test-auditor · just check", "statement audit · no sorry"),
     ),
     _Phase(
         number=3,
         title="EXPLORATION",
         prose=(
-            "predictions are registered",
-            "before the sweep exists; the",
-            "data is graded against them,",
-            "then argued over line by line",
+            "predictions registered",
+            "before the sweep exists;",
+            "data graded against them",
         ),
         commands=(
             "/design-experiment",
@@ -225,31 +222,29 @@ _PHASES: tuple[_Phase, ...] = (
             "/explore-results",
             "/critique-results",
         ),
-        gate=("experiment-auditor · pilot", "results-auditor · until CLEAN"),
+        gate=("experiment-auditor · pilot", "results-auditor · CLEAN"),
     ),
     _Phase(
         number=4,
-        title="THEOREM PROVING",
+        title="PROVING",
         prose=(
-            "the informal conjecture is",
-            "stated formally, hunted for",
-            "counterexamples beyond the",
-            "swept ranges, then proved",
+            "conjectures are stated",
+            "formally, stress-tested,",
+            "then proved in Lean",
         ),
         commands=("/add-conjecture", "/attack-conjecture"),
-        gate=("conjecture-auditor · CLEAN", "proof-auditor · axiom audit"),
+        gate=("conjecture-auditor · CLEAN", "proof audit · axiom audit"),
     ),
     _Phase(
         number=5,
         title="PUBLISHING",
         prose=(
-            "what survived is rebuilt as",
-            "parameterized figures beside",
-            "a docs site whose API refs",
-            "are generated, never written",
+            "what survived is rebuilt",
+            "as parameterized figures",
+            "and a generated docs site",
         ),
         commands=("just figure <name>", "just docs"),
-        gate=("docs-check · zero warnings", "no scratch plot ever ships"),
+        gate=("docs-check · zero warnings", "no scratch plot ships"),
     ),
 )
 """The process, left to right."""
@@ -258,7 +253,7 @@ _CHIPS: tuple[_Chip, ...] = (
     _Chip(
         index=0,
         name="logseq graph · docs/ref",
-        gloss="concepts, links, and the PDFs",
+        gloss="concepts, links, the PDFs",
     ),
     _Chip(
         index=1,
@@ -268,17 +263,17 @@ _CHIPS: tuple[_Chip, ...] = (
     _Chip(
         index=2,
         name="data/results · docs/results",
-        gloss="frames, and what they meant",
+        gloss="frames, what they meant",
     ),
     _Chip(
         index=3,
         name="docs/conj → docs/theorems",
-        gloss="what is open, and what closed",
+        gloss="what is open, what closed",
     ),
     _Chip(
         index=4,
         name="docs/fig · site/ · the post",
-        gloss="figures, docs, and the writeup",
+        gloss="figures, docs, the writeup",
     ),
 )
 """One durable artifact per phase, in phase order."""
@@ -417,9 +412,9 @@ def _chip(ax: Axes, index: int, title: str, gloss: str, bottom: float) -> None:
     )
     ax.text(
         _phase_cx(index),
-        bottom + 0.58,
+        bottom + 0.62,
         title,
-        fontsize=9.5,
+        fontsize=12,
         fontweight="bold",
         color=style.INK,
         ha="center",
@@ -429,7 +424,7 @@ def _chip(ax: Axes, index: int, title: str, gloss: str, bottom: float) -> None:
         _phase_cx(index),
         bottom + 0.28,
         gloss,
-        fontsize=8.5,
+        fontsize=12,
         color=style.MIST,
         ha="center",
         va="center",
@@ -469,23 +464,23 @@ def _phase(ax: Axes, index: int, phase: _Phase) -> None:
         linewidth=1.4,
     )
 
-    badge_y = _STAGE_TOP - 0.36
-    ax.add_patch(Circle((x + 0.34, badge_y), 0.17, facecolor=style.SLATE, lw=0))
+    badge_y = _STAGE_TOP - 0.40
+    ax.add_patch(Circle((x + 0.38, badge_y), 0.22, facecolor=style.SLATE, lw=0))
     ax.text(
-        x + 0.34,
+        x + 0.38,
         badge_y,
         str(phase.number),
-        fontsize=9.5,
+        fontsize=12,
         fontweight="bold",
         color=style.PAPER,
         ha="center",
         va="center",
     )
     ax.text(
-        x + 0.64,
+        x + 0.72,
         badge_y,
         phase.title,
-        fontsize=12,
+        fontsize=18,
         fontweight="bold",
         color=style.INK,
         va="center",
@@ -497,7 +492,7 @@ def _phase(ax: Axes, index: int, phase: _Phase) -> None:
             x + 0.2,
             _PROSE_TOP_Y - line_index * _LINE_STEP,
             line,
-            fontsize=8.5,
+            fontsize=12,
             color=style.INK,
             va="center",
         )
@@ -508,7 +503,7 @@ def _phase(ax: Axes, index: int, phase: _Phase) -> None:
             x + 0.2,
             top - line_index * _LINE_STEP,
             command,
-            fontsize=8.5,
+            fontsize=12,
             fontweight="bold",
             color=style.SLATE,
             va="center",
@@ -520,7 +515,7 @@ def _phase(ax: Axes, index: int, phase: _Phase) -> None:
             x + 0.2,
             _GATE_TOP_Y - line_index * _LINE_STEP,
             line,
-            fontsize=8,
+            fontsize=12,
             color=_AUDIT_COLOR,
             va="center",
         )
@@ -561,9 +556,9 @@ def _artifacts(ax: Axes, step: int) -> None:
         )
         ax.text(
             _phase_cx(chip.index),
-            _FILE_TOP - 0.24,
+            _FILE_TOP - 0.28,
             chip.name,
-            fontsize=9,
+            fontsize=12,
             fontweight="bold",
             color=style.INK,
             ha="center",
@@ -571,9 +566,9 @@ def _artifacts(ax: Axes, step: int) -> None:
         )
         ax.text(
             _phase_cx(chip.index),
-            _FILE_TOP - 0.48,
+            _FILE_TOP - 0.62,
             chip.gloss,
-            fontsize=8,
+            fontsize=12,
             color=style.MIST,
             ha="center",
             va="center",

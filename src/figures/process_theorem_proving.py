@@ -74,10 +74,10 @@ _PAD: float = 0.2
 _MARGIN_L: float = 0.6
 """Left edge of every full-width element."""
 
-_MARGIN_R: float = 15.4
+_MARGIN_R: float = 17.4
 """Right edge of every full-width element."""
 
-_STAGE_W: float = 2.6
+_STAGE_W: float = 3.0
 """Width of a pipeline stage box."""
 
 _STAGE_H: float = 3.8
@@ -95,19 +95,19 @@ _STAGE_BOTTOM: float = _STAGE_TOP - _STAGE_H
 _INPUT_BOTTOM: float = 6.55
 """Bottom edge of the input chip, above the stage row."""
 
-_INPUT_H: float = 0.8
+_INPUT_H: float = 0.9
 """Height of the input chip."""
 
-_FIRST_LABEL_Y: float = _STAGE_TOP - 0.98
+_FIRST_LABEL_Y: float = _STAGE_TOP - 1.10
 """Baseline of the first beat's label inside a stage box."""
 
-_SECOND_LABEL_Y: float = _STAGE_TOP - 2.44
+_SECOND_LABEL_Y: float = _STAGE_TOP - 2.40
 """Baseline of the second beat's label inside a stage box."""
 
-_BEAT_DIVIDER_Y: float = _STAGE_TOP - 2.12
+_BEAT_DIVIDER_Y: float = _STAGE_TOP - 2.10
 """Height of the hairline separating a stage's two beats."""
 
-_LINE_STEP: float = 0.28
+_LINE_STEP: float = 0.34
 """Vertical distance between consecutive body lines."""
 
 _GATE_SPAN: float = 0.45
@@ -123,17 +123,17 @@ keeps them clear of the gate loops, which are centered on the box."""
 _FILE_TOP: float = 1.9
 """Top edge of the artifact chips, below the stage row."""
 
-_FILE_H: float = 0.7
+_FILE_H: float = 0.9
 """Height of an artifact chip."""
 
-_STATEMENT_Y: float = 0.95
+_STATEMENT_Y: float = 0.65
 """Height of the horizontal run of the statement span, below the chips."""
 
 _STATEMENT_ENTRY_Y: float = _STAGE_BOTTOM + 0.5
 """Height at which the statement span enters PROMOTE, below the flow arrow
 that shares the same gap."""
 
-_RETURN_Y: float = 0.42
+_RETURN_Y: float = 0.25
 """Height of the horizontal run of the return path."""
 
 _SPINE_X: float = _MARGIN_L - 0.32
@@ -205,17 +205,15 @@ _STAGES: tuple[_Stage, ...] = (
         first=_Beat(
             label="EVIDENCE",
             lines=(
-                "quote the informal note, its",
-                "results docs, and the ranges",
-                "those sweeps actually covered",
+                "quote note, results, and",
+                "the ranges actually swept",
             ),
         ),
         second=_Beat(
             label="DISPOSITION",
             lines=(
-                "check the graph, the papers,",
-                "and Mathlib first: known-true",
-                "is intake, known-false a bug",
+                "known-true is intake,",
+                "known-false is a bug",
             ),
         ),
         tool="/add-conjecture · the note",
@@ -227,19 +225,17 @@ _STAGES: tuple[_Stage, ...] = (
             label="CHECKPOINTS",
             lines=(
                 "every quantifier and side",
-                "condition explicit; the",
-                "minimal vs. natural dial set",
+                "condition made explicit",
             ),
         ),
         second=_Beat(
             label="FALSIFY",
             lines=(
-                "hunt counterexamples beyond",
-                "the swept ranges — evidence",
-                "cannot be its own stress test",
+                "hunt counterexamples",
+                "beyond the swept ranges",
             ),
         ),
-        tool="counterexample-hunter · with you",
+        tool="counterexample-hunter",
     ),
     _Stage(
         number=3,
@@ -247,20 +243,18 @@ _STAGES: tuple[_Stage, ...] = (
         first=_Beat(
             label="LEAN",
             lines=(
-                "commit the statement as a Prop",
-                "def — it elaborates with no",
-                "proof obligation attached",
+                "commit the statement as",
+                "a Prop def in Lean",
             ),
         ),
         second=_Beat(
             label="DOC",
             lines=(
-                "the page carries the evidence",
-                "map, the coverage, the special",
-                "cases, and the attack plan",
+                "the page carries evidence,",
+                "coverage, attack plan",
             ),
         ),
-        tool="Prop def · statement-auditor",
+        tool="Prop def · statement audit",
     ),
     _Stage(
         number=4,
@@ -268,20 +262,18 @@ _STAGES: tuple[_Stage, ...] = (
         first=_Beat(
             label="PLAN",
             lines=(
-                "one lemma DAG, two views: the",
-                "chalkboard sketch is its prose",
-                "— take the risky lemma first",
+                "one lemma DAG — take the",
+                "riskiest lemma first",
             ),
         ),
         second=_Beat(
             label="PROVE",
             lines=(
-                "per lemma state, audit,",
-                "plausible, prove — an effort",
-                "cap buys breadth over heroics",
+                "state, audit, prove per",
+                "lemma, under effort caps",
             ),
         ),
-        tool="/attack-conjecture · with you",
+        tool="/attack-conjecture",
     ),
     _Stage(
         number=5,
@@ -289,17 +281,15 @@ _STAGES: tuple[_Stage, ...] = (
         first=_Beat(
             label="RECORD",
             lines=(
-                "each status change is written",
-                "through as it happens; every",
-                "leftover sorry is deleted",
+                "every status change is",
+                "written through live",
             ),
         ),
         second=_Beat(
             label="CLOSE",
             lines=(
-                "on closure audit the axioms,",
-                "write the prose from the Lean",
-                "proof, then move the page",
+                "audit axioms; prose comes",
+                "from the Lean proof",
             ),
         ),
         tool="docs/conj → docs/theorems",
@@ -473,9 +463,9 @@ def _conjecture_input(ax: Axes) -> None:
     )
     ax.text(
         _stage_cx(0),
-        _INPUT_BOTTOM + 0.58,
+        _INPUT_BOTTOM + 0.62,
         "the informal conjecture",
-        fontsize=9.5,
+        fontsize=12,
         fontweight="bold",
         color=style.INK,
         ha="center",
@@ -484,8 +474,8 @@ def _conjecture_input(ax: Axes) -> None:
     ax.text(
         _stage_cx(0),
         _INPUT_BOTTOM + 0.28,
-        "a note left by /critique-results",
-        fontsize=8.5,
+        "left by /critique-results",
+        fontsize=12,
         color=style.MIST,
         ha="center",
         va="center",
@@ -505,7 +495,7 @@ def _beat(ax: Axes, index: int, beat: _Beat, top: float) -> None:
         x + 0.2,
         top,
         beat.label,
-        fontsize=8.5,
+        fontsize=12,
         fontweight="bold",
         color=style.SLATE,
         va="center",
@@ -513,9 +503,9 @@ def _beat(ax: Axes, index: int, beat: _Beat, top: float) -> None:
     for line_index, line in enumerate(beat.lines):
         ax.text(
             x + 0.2,
-            top - 0.30 - line_index * _LINE_STEP,
+            top - 0.38 - line_index * _LINE_STEP,
             line,
-            fontsize=8.5,
+            fontsize=12,
             color=style.INK,
             va="center",
         )
@@ -532,28 +522,28 @@ def _stage(ax: Axes, index: int, stage: _Stage) -> None:
         linewidth=1.4,
     )
 
-    badge_y = _STAGE_TOP - 0.36
-    ax.add_patch(Circle((x + 0.34, badge_y), 0.17, facecolor=style.SLATE, lw=0))
+    badge_y = _STAGE_TOP - 0.40
+    ax.add_patch(Circle((x + 0.38, badge_y), 0.22, facecolor=style.SLATE, lw=0))
     ax.text(
-        x + 0.34,
+        x + 0.38,
         badge_y,
         str(stage.number),
-        fontsize=9.5,
+        fontsize=12,
         fontweight="bold",
         color=style.PAPER,
         ha="center",
         va="center",
     )
     ax.text(
-        x + 0.64,
+        x + 0.72,
         badge_y,
         stage.title,
-        fontsize=12,
+        fontsize=18,
         fontweight="bold",
         color=style.INK,
         va="center",
     )
-    _rule(ax, index, _STAGE_TOP - 0.66)
+    _rule(ax, index, _STAGE_TOP - 0.78)
 
     _beat(ax, index, stage.first, _FIRST_LABEL_Y)
     _rule(ax, index, _BEAT_DIVIDER_Y)
@@ -561,9 +551,9 @@ def _stage(ax: Axes, index: int, stage: _Stage) -> None:
 
     ax.text(
         x + 0.2,
-        _STAGE_BOTTOM + 0.22,
+        _STAGE_BOTTOM + 0.30,
         stage.tool,
-        fontsize=8,
+        fontsize=12,
         color=style.MIST,
         va="center",
     )
@@ -627,9 +617,9 @@ def _artifacts(ax: Axes, step: int) -> None:
         )
         ax.text(
             _stage_cx(chip.index),
-            _FILE_TOP - 0.24,
+            _FILE_TOP - 0.28,
             chip.name,
-            fontsize=9,
+            fontsize=12,
             fontweight="bold",
             color=style.INK,
             ha="center",
@@ -637,9 +627,9 @@ def _artifacts(ax: Axes, step: int) -> None:
         )
         ax.text(
             _stage_cx(chip.index),
-            _FILE_TOP - 0.48,
+            _FILE_TOP - 0.62,
             chip.gloss,
-            fontsize=8,
+            fontsize=12,
             color=style.MIST,
             ha="center",
             va="center",

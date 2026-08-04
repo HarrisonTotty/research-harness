@@ -42,13 +42,13 @@ _PAD: float = 0.2
 _MARGIN_L: float = 0.6
 """Left edge of every full-width element."""
 
-_MARGIN_R: float = 15.4
+_MARGIN_R: float = 17.4
 """Right edge of every full-width element."""
 
-_STAGE_W: float = 2.6
+_STAGE_W: float = 3.0
 """Width of a pipeline stage box."""
 
-_STAGE_H: float = 2.3
+_STAGE_H: float = 2.5
 """Height of a pipeline stage box."""
 
 _STAGE_GAP: float = 0.45
@@ -63,13 +63,13 @@ _STAGE_BOTTOM: float = _STAGE_TOP - _STAGE_H
 _ARC_CLEARANCE: float = 0.55
 """Headroom above the stage row for the bow of the audit arc."""
 
-_FILE_TOP: float = 3.4
+_FILE_TOP: float = 3.0
 """Top edge of the working-file chips, below the stage row."""
 
-_FILE_H: float = 0.7
+_FILE_H: float = 0.9
 """Height of a working-file chip."""
 
-_RETURN_Y: float = 2.28
+_RETURN_Y: float = 1.7
 """Height of the horizontal run of the red-link return path."""
 
 _CONTENT_TOP: float = _STAGE_TOP + _ARC_CLEARANCE
@@ -108,9 +108,8 @@ _STAGES: tuple[_Stage, ...] = (
         title="SURVEY",
         body=(
             "search the graph for the",
-            "topic, its synonyms and",
-            "plurals — extend what",
-            "already exists, never fork it",
+            "topic and its synonyms —",
+            "extend, never fork",
         ),
         tool="search_logseq",
     ),
@@ -118,10 +117,9 @@ _STAGES: tuple[_Stage, ...] = (
         number=2,
         title="RESEARCH",
         body=(
-            "one subagent per source, run",
-            "in parallel; original sources",
-            "first, every claim verified",
-            "and attributed",
+            "one subagent per source;",
+            "original sources first,",
+            "every claim attributed",
         ),
         tool="source-reader agents",
     ),
@@ -129,10 +127,9 @@ _STAGES: tuple[_Stage, ...] = (
         number=3,
         title="DRAFT",
         body=(
-            "build the page from the fact",
-            "map alone: formal definitions,",
-            "theorems with attribution,",
-            "examples as test fixtures",
+            "build the page from the",
+            "fact map alone: theorems,",
+            "examples, attributions",
         ),
         tool="house page template",
     ),
@@ -141,9 +138,8 @@ _STAGES: tuple[_Stage, ...] = (
         title="AUDIT",
         body=(
             "a second agent diffs draft",
-            "against fact map; unsupported",
-            "claims are re-researched or",
-            "cut before anything ships",
+            "against facts; unsupported",
+            "claims never ship",
         ),
         tool="draft-auditor · until CLEAN",
     ),
@@ -151,10 +147,9 @@ _STAGES: tuple[_Stage, ...] = (
         number=5,
         title="PUBLISH",
         body=(
-            "transcribe section by section,",
-            "then re-read the live page and",
-            "diff it against the draft;",
-            "resolve every link",
+            "transcribe, then re-read",
+            "the live page against the",
+            "draft; resolve every link",
         ),
         tool="logseq mcp · link check",
     ),
@@ -252,30 +247,30 @@ def _stage(ax: Axes, index: int, stage: _Stage) -> None:
         linewidth=1.4,
     )
 
-    badge_y = _STAGE_TOP - 0.36
-    ax.add_patch(Circle((x + 0.34, badge_y), 0.17, facecolor=style.SLATE, lw=0))
+    badge_y = _STAGE_TOP - 0.40
+    ax.add_patch(Circle((x + 0.38, badge_y), 0.22, facecolor=style.SLATE, lw=0))
     ax.text(
-        x + 0.34,
+        x + 0.38,
         badge_y,
         str(stage.number),
-        fontsize=9.5,
+        fontsize=12,
         fontweight="bold",
         color=style.PAPER,
         ha="center",
         va="center",
     )
     ax.text(
-        x + 0.64,
+        x + 0.72,
         badge_y,
         stage.title,
-        fontsize=12,
+        fontsize=18,
         fontweight="bold",
         color=style.INK,
         va="center",
     )
     ax.plot(
         [x + 0.2, x + _STAGE_W - 0.2],
-        [_STAGE_TOP - 0.66, _STAGE_TOP - 0.66],
+        [_STAGE_TOP - 0.78, _STAGE_TOP - 0.78],
         color=style.PARCHMENT,
         linewidth=1.0,
         solid_capstyle="butt",
@@ -284,17 +279,17 @@ def _stage(ax: Axes, index: int, stage: _Stage) -> None:
     for line_index, line in enumerate(stage.body):
         ax.text(
             x + 0.2,
-            _STAGE_TOP - 0.95 - line_index * 0.28,
+            _STAGE_TOP - 1.10 - line_index * 0.34,
             line,
-            fontsize=8.5,
+            fontsize=12,
             color=style.INK,
             va="center",
         )
     ax.text(
         x + 0.2,
-        _STAGE_BOTTOM + 0.22,
+        _STAGE_BOTTOM + 0.30,
         stage.tool,
-        fontsize=8,
+        fontsize=12,
         color=style.MIST,
         va="center",
     )
@@ -334,8 +329,8 @@ def _working_files(ax: Axes, step: int) -> None:
     A file appears with the stage that first writes it.
     """
     files = (
-        (1, "sources.md", "every fact, with its source"),
-        (2, "draft.md", "the page as it will be published"),
+        (1, "sources.md", "every fact, with source"),
+        (2, "draft.md", "the page, ready to ship"),
     )
     for index, name, gloss in files:
         if step < _stage_step(index):
@@ -357,9 +352,9 @@ def _working_files(ax: Axes, step: int) -> None:
         )
         ax.text(
             _stage_cx(index),
-            _FILE_TOP - 0.24,
+            _FILE_TOP - 0.28,
             name,
-            fontsize=9,
+            fontsize=12,
             fontweight="bold",
             color=style.INK,
             ha="center",
@@ -367,9 +362,9 @@ def _working_files(ax: Axes, step: int) -> None:
         )
         ax.text(
             _stage_cx(index),
-            _FILE_TOP - 0.48,
+            _FILE_TOP - 0.62,
             gloss,
-            fontsize=8,
+            fontsize=12,
             color=style.MIST,
             ha="center",
             va="center",
