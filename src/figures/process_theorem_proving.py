@@ -113,16 +113,12 @@ _LINE_STEP: float = 0.28
 _GATE_SPAN: float = 0.45
 """Half-width of a gate's loop, measured from the stage's center."""
 
-_GATE_LABEL_Y: float = 6.5
-"""Baseline of a gate's caption, clear of the loop it names."""
-
 _REFUTE_Y: float = 6.95
 """Height of the horizontal run of the mid-attack refutation path."""
 
 _REFUTE_X_OFFSET: float = 0.3
 """Inset of the refutation path's verticals from a stage box's left edge; it
-keeps them clear of the gate loops and their captions, which are centered and
-left-aligned on the box respectively."""
+keeps them clear of the gate loops, which are centered on the box."""
 
 _FILE_TOP: float = 1.9
 """Top edge of the artifact chips, below the stage row."""
@@ -345,15 +341,10 @@ _CHIPS: tuple[_Chip, ...] = (
 )
 """One artifact per stage, in stage order."""
 
-_GATES: tuple[tuple[int, str], ...] = (
-    (1, "REFUTED → refine → re-hunt"),
-    (2, "conjecture-auditor · CLEAN"),
-    (3, "statement-auditor · per round"),
-    (4, "proof-auditor · axiom audit"),
-)
-"""Stages held in a loop until a check they did not write comes back, and the
-caption naming each. GROUND has none: it is the only stage whose output is a
-reading of what already exists rather than a claim of its own."""
+_GATES: tuple[int, ...] = (1, 2, 3, 4)
+"""Stages held in a loop until a check they did not write comes back. GROUND
+has none: it is the only stage whose output is a reading of what already
+exists rather than a claim of its own."""
 
 _STEP_FIRST_STAGE: int = 1
 """Reveal step that adds GROUND; each later stage follows one step behind, so
@@ -468,28 +459,6 @@ def _rule(ax: Axes, index: int, y: float) -> None:
         color=style.PARCHMENT,
         linewidth=1.0,
         solid_capstyle="butt",
-    )
-
-
-def _edge_label(
-    ax: Axes,
-    x: float,
-    y: float,
-    text: str,
-    *,
-    color: str,
-    fontsize: float = 8.0,
-    ha: str = "center",
-) -> None:
-    """Caption an edge at ``(x, y)``, sitting above the run it names."""
-    ax.text(
-        x,
-        y,
-        text,
-        fontsize=fontsize,
-        color=color,
-        ha=ha,
-        va="bottom",
     )
 
 
@@ -622,7 +591,7 @@ def _gates(ax: Axes, step: int) -> None:
     something that did not write it — a counterexample search, a fresh-eyes
     auditor — fails to break it.
     """
-    for index, label in _GATES:
+    for index in _GATES:
         if step < _stage_step(index):
             continue
         center = _stage_cx(index)
@@ -633,17 +602,6 @@ def _gates(ax: Axes, step: int) -> None:
             color=_AUDIT_COLOR,
             rad=0.85,
             linewidth=1.2,
-        )
-        # Left-aligned to the loop rather than centered on it: a centered
-        # caption would run back under the refutation path's descent.
-        _edge_label(
-            ax,
-            center - _GATE_SPAN,
-            _GATE_LABEL_Y,
-            label,
-            color=_AUDIT_COLOR,
-            fontsize=7.5,
-            ha="left",
         )
 
 
@@ -710,16 +668,6 @@ def _statement_span(ax: Axes, step: int) -> None:
         ],
         color=_STATEMENT_COLOR,
     )
-    _edge_label(
-        ax,
-        (_stage_cx(2) + gap_x) / 2.0,
-        _STATEMENT_Y + 0.09,
-        # Kept short enough to sit between the span's two verticals: the run is
-        # only two columns long, so a sibling-length caption would be crossed
-        # by its own riser.
-        "the registered Prop def is what the theorem proves — literally",
-        color=_STATEMENT_COLOR,
-    )
 
 
 def _refutation_return(ax: Axes, step: int) -> None:
@@ -736,13 +684,6 @@ def _refutation_return(ax: Axes, step: int) -> None:
             (end_x, _REFUTE_Y),
             (end_x, _STAGE_TOP),
         ],
-        color=_AUDIT_COLOR,
-    )
-    _edge_label(
-        ax,
-        (start_x + end_x) / 2.0,
-        _REFUTE_Y + 0.09,
-        "a counterexample found mid-attack re-opens the statement, on a new page",
         color=_AUDIT_COLOR,
     )
 
@@ -766,13 +707,6 @@ def _return_loop(ax: Axes, step: int) -> None:
             (_SPINE_X, _INPUT_BOTTOM + _INPUT_H / 2.0),
             (_stage_x(0), _INPUT_BOTTOM + _INPUT_H / 2.0),
         ],
-        color=_RETURN_COLOR,
-    )
-    _edge_label(
-        ax,
-        (_SPINE_X + _stage_cx(4)) / 2.0,
-        _RETURN_Y + 0.09,
-        "proved or refuted, it goes back to the graph as the next line of inquiry",
         color=_RETURN_COLOR,
     )
 

@@ -104,16 +104,12 @@ _LINE_STEP: float = 0.28
 _GATE_SPAN: float = 0.45
 """Half-width of an audit gate's loop, measured from the stage's center."""
 
-_GATE_LABEL_Y: float = 6.5
-"""Baseline of an audit gate's caption, clear of the loop it names."""
-
 _BUG_Y: float = 6.95
 """Height of the horizontal run of the bug-first return path."""
 
 _BUG_X_OFFSET: float = 0.3
 """Inset of the bug-first path's verticals from a stage box's left edge; it
-keeps them clear of the audit loops and their captions, which are centered
-and left-aligned on the box respectively."""
+keeps them clear of the audit loops, which are centered on the box."""
 
 _FILE_TOP: float = 1.9
 """Top edge of the artifact chips, below the stage row."""
@@ -336,11 +332,8 @@ _CHIPS: tuple[_Chip, ...] = (
 )
 """One artifact per stage, in stage order."""
 
-_GATES: tuple[tuple[int, str], ...] = (
-    (1, "experiment-auditor · CLEAN"),
-    (4, "results-auditor · CLEAN"),
-)
-"""Stages that loop on their own auditor, and the caption naming each."""
+_GATES: tuple[int, ...] = (1, 4)
+"""Stages that loop on their own auditor."""
 
 _STEP_FIRST_STAGE: int = 1
 """Reveal step that adds DESIGN; each later stage follows one step behind, so
@@ -455,28 +448,6 @@ def _rule(ax: Axes, index: int, y: float) -> None:
         color=style.PARCHMENT,
         linewidth=1.0,
         solid_capstyle="butt",
-    )
-
-
-def _edge_label(
-    ax: Axes,
-    x: float,
-    y: float,
-    text: str,
-    *,
-    color: str,
-    fontsize: float = 8.0,
-    ha: str = "center",
-) -> None:
-    """Caption an edge at ``(x, y)``, sitting above the run it names."""
-    ax.text(
-        x,
-        y,
-        text,
-        fontsize=fontsize,
-        color=color,
-        ha=ha,
-        va="bottom",
     )
 
 
@@ -608,7 +579,7 @@ def _audit_gates(ax: Axes, step: int) -> None:
     phase both auditors are dispatched from inside a skill: nothing downstream
     of them starts, and nothing upstream is revisited, until the audit passes.
     """
-    for index, label in _GATES:
+    for index in _GATES:
         if step < _stage_step(index):
             continue
         center = _stage_cx(index)
@@ -619,17 +590,6 @@ def _audit_gates(ax: Axes, step: int) -> None:
             color=_AUDIT_COLOR,
             rad=0.85,
             linewidth=1.2,
-        )
-        # Left-aligned to the loop rather than centered on it: a centered
-        # caption would run back under the bug-first path's descent.
-        _edge_label(
-            ax,
-            center - _GATE_SPAN,
-            _GATE_LABEL_Y,
-            label,
-            color=_AUDIT_COLOR,
-            fontsize=7.5,
-            ha="left",
         )
 
 
@@ -695,14 +655,6 @@ def _prereg_span(ax: Axes, step: int) -> None:
         ],
         color=_PREREG_COLOR,
     )
-    _edge_label(
-        ax,
-        (_stage_cx(0) + gap_x) / 2.0,
-        _PREREG_Y + 0.09,
-        "predictions are frozen before the code exists — "
-        "that is what makes an unexpected result well-defined",
-        color=_PREREG_COLOR,
-    )
 
 
 def _bug_first_return(ax: Axes, step: int) -> None:
@@ -719,13 +671,6 @@ def _bug_first_return(ax: Axes, step: int) -> None:
             (end_x, _BUG_Y),
             (end_x, _STAGE_TOP),
         ],
-        color=_AUDIT_COLOR,
-    )
-    _edge_label(
-        ax,
-        (start_x + end_x) / 2.0,
-        _BUG_Y + 0.09,
-        "a contradiction sends you back to the script, not into prose",
         color=_AUDIT_COLOR,
     )
 
@@ -748,13 +693,6 @@ def _return_loop(ax: Axes, step: int) -> None:
             (_SPINE_X, _INPUT_BOTTOM + _INPUT_H / 2.0),
             (_stage_x(0), _INPUT_BOTTOM + _INPUT_H / 2.0),
         ],
-        color=_RETURN_COLOR,
-    )
-    _edge_label(
-        ax,
-        (_SPINE_X + _stage_cx(4)) / 2.0,
-        _RETURN_Y + 0.09,
-        "the follow-ups it proposes are the next hypothesis",
         color=_RETURN_COLOR,
     )
 

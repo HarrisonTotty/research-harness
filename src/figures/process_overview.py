@@ -140,12 +140,8 @@ _RETURN_Y: float = _WRITEBACK_Y - 0.7
 _SPINE_X: float = _MARGIN_L - 0.32
 """Left-hand column the publication loop climbs, clear of every box."""
 
-_LABEL_OFFSET: float = 0.09
-"""Gap between an edge and the caption naming it."""
-
-_CONTENT_TOP: float = _REFUTE_Y + 0.32
-"""Top of the drawing: the caption above the refutation path, which clears the
-input and output chips."""
+_CONTENT_TOP: float = _INPUT_BOTTOM + _INPUT_H
+"""Top of the drawing: the upper edge of the input and output chips."""
 
 _CONTENT_BOTTOM: float = _RETURN_Y
 """Bottom of the drawing: the horizontal run of the publication loop."""
@@ -410,29 +406,6 @@ def _rule(ax: Axes, index: int, y: float) -> None:
     )
 
 
-def _edge_label(
-    ax: Axes,
-    x: float,
-    y: float,
-    text: str,
-    *,
-    color: str,
-    fontsize: float = 8.0,
-    ha: str = "center",
-    va: str = "bottom",
-) -> None:
-    """Caption an edge at ``(x, y)``, on the side of it given by ``va``."""
-    ax.text(
-        x,
-        y,
-        text,
-        fontsize=fontsize,
-        color=color,
-        ha=ha,
-        va=va,
-    )
-
-
 def _chip(ax: Axes, index: int, title: str, gloss: str, bottom: float) -> None:
     """Draw a titled chip of :data:`_INPUT_H` height across a phase's column."""
     _box(
@@ -623,13 +596,6 @@ def _bug_first_return(ax: Axes, step: int) -> None:
         ],
         color=_AUDIT_COLOR,
     )
-    _edge_label(
-        ax,
-        (start_x + end_x) / 2.0,
-        _BUG_Y + _LABEL_OFFSET,
-        "a contradiction is a bug first",
-        color=_AUDIT_COLOR,
-    )
 
 
 def _refutation_return(ax: Axes, step: int) -> None:
@@ -650,13 +616,6 @@ def _refutation_return(ax: Axes, step: int) -> None:
             (end_x, _REFUTE_Y),
             (end_x, _STAGE_TOP),
         ],
-        color=_AUDIT_COLOR,
-    )
-    _edge_label(
-        ax,
-        (start_x + end_x) / 2.0,
-        _REFUTE_Y + _LABEL_OFFSET,
-        "a counterexample re-opens the data",
         color=_AUDIT_COLOR,
     )
 
@@ -688,17 +647,6 @@ def _writeback_rail(ax: Axes, step: int) -> None:
         ],
         color=_WRITEBACK_COLOR,
     )
-    # Captioned below its own rail: the feeders drop into it from above, and a
-    # caption there would be crossed by every one of them.
-    _edge_label(
-        ax,
-        (_phase_cx(0) + _phase_cx(_WRITEBACK_SOURCE)) / 2.0,
-        _WRITEBACK_Y - _LABEL_OFFSET,
-        "every phase closes its loop — what was built or found is written "
-        "back to the graph",
-        color=_WRITEBACK_COLOR,
-        va="top",
-    )
 
 
 def _return_loop(ax: Axes, step: int) -> None:
@@ -719,13 +667,6 @@ def _return_loop(ax: Axes, step: int) -> None:
             (_SPINE_X, _INPUT_BOTTOM + _INPUT_H / 2.0),
             (_phase_x(0), _INPUT_BOTTOM + _INPUT_H / 2.0),
         ],
-        color=_RETURN_COLOR,
-    )
-    _edge_label(
-        ax,
-        (_SPINE_X + _phase_cx(4)) / 2.0,
-        _RETURN_Y + _LABEL_OFFSET,
-        "the terms it needed and the questions it left open are the next intake",
         color=_RETURN_COLOR,
     )
 
