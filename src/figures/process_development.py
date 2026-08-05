@@ -19,11 +19,19 @@ mechanics, so the two figures sit together in one deck.
 
 Besides the complete diagram, the module writes a build-up sequence — one image
 per reveal step, each adding the next piece of the process — for walking an
-audience through it a stage at a time. A step reveals a stage together with
-whatever feeds it, so step *n* is stage *n* until the last step closes the
-loop. Every step is rendered into the same frame as the whole, so the images
-can be stacked on one slide (or advanced through) without anything shifting
-between them.
+audience through it a piece at a time. A step reveals a single element rather
+than a whole stage: the box, then the working file it leaves behind, and where
+a stage re-opens an earlier one, the return edge between the two::
+
+    1  the Logseq page         6  BUILD
+    2  SURVEY                  7  AUDIT
+    3  page.md                 8  audit gate
+    4  MAP                     9  GATE
+    5  spec.md · coverage.md  10  write-back
+
+Every step is rendered into the same frame as the whole, so the images can be
+stacked on one slide (or advanced through) without anything shifting between
+them.
 
 Second of a series of meta-figures, one per README process phase. Regenerate
 with ``just figure process-development``.
@@ -195,11 +203,24 @@ _STAGES: tuple[_Stage, ...] = (
 )
 """The pipeline, left to right."""
 
-_STEP_FIRST_STAGE: int = 1
-"""Reveal step that adds SURVEY; each later stage follows one step behind, so
-a step number below :data:`_STEP_RETURN` is also the stage's badge number."""
+_STEP_INPUT: int = 1
+"""Reveal step that puts the page on screen, before anything reads it."""
 
-_STEP_RETURN: int = _STEP_FIRST_STAGE + len(_STAGES)  # one past the last stage
+_STAGE_STEPS: tuple[int, ...] = (2, 4, 6, 7, 9)
+"""Reveal step at which each stage box appears, in pipeline order. A stage and
+the working file it writes are consecutive steps; only the first two stages
+write one, and AUDIT is followed by the gate edge it enforces rather than by a
+file."""
+
+_FILE_STEPS: tuple[int, ...] = (3, 5)
+"""Reveal step at which each working-file chip appears, in the order the early
+stages write them."""
+
+_STEP_AUDIT_LOOP: int = 8
+"""Reveal step that adds the audit's return edge, once AUDIT exists to enforce
+it and the work it sends back is on screen."""
+
+_STEP_RETURN: int = 10
 """Reveal step that closes the loop with the write-back path."""
 
 _TOTAL_STEPS: int = _STEP_RETURN
@@ -209,7 +230,7 @@ diagram."""
 
 def _stage_step(index: int) -> int:
     """Return the reveal step at which the stage at ``index`` appears."""
-    return _STEP_FIRST_STAGE + index
+    return _STAGE_STEPS[index]
 
 
 def _stage_x(index: int) -> float:
@@ -288,7 +309,7 @@ def _rule(ax: Axes, index: int, y: float) -> None:
 
 
 def _page_input(ax: Axes) -> None:
-    """Draw the page feed above SURVEY, and its arrow into the stage."""
+    """Draw the page feed above SURVEY."""
     _box(
         ax,
         (_stage_x(0), _INPUT_BOTTOM, _STAGE_W, _INPUT_H),
@@ -315,6 +336,14 @@ def _page_input(ax: Axes) -> None:
         ha="center",
         va="center",
     )
+
+
+def _page_arrow(ax: Axes) -> None:
+    """Draw the arrow from the page down into SURVEY.
+
+    It arrives with the box it lands on rather than with the chip it leaves,
+    so no step ever shows an arrow into empty space.
+    """
     _arrow(
         ax,
         (_stage_cx(0), _INPUT_BOTTOM),
@@ -412,7 +441,7 @@ def _flow(ax: Axes, step: int) -> None:
 
 def _audit_loop(ax: Axes, step: int) -> None:
     """Draw the audit's return edge — the gate that unlocks the run."""
-    if step < _stage_step(3):
+    if step < _STEP_AUDIT_LOOP:
         return
     _arrow(
         ax,
@@ -427,14 +456,15 @@ def _audit_loop(ax: Axes, step: int) -> None:
 def _working_files(ax: Axes, step: int) -> None:
     """Draw the scratchpad files the early stages write and later stages read.
 
-    A file appears with the stage that first writes it.
+    A file appears one step after the stage that first writes it, so the stage
+    and what it produced land as separate reveals.
     """
     files = (
         (0, "page.md", "the page, verbatim"),
         (1, "spec.md · coverage.md", "the plan, one row per claim"),
     )
-    for index, name, gloss in files:
-        if step < _stage_step(index):
+    for chip_index, (index, name, gloss) in enumerate(files):
+        if step < _FILE_STEPS[chip_index]:
             continue
         _box(
             ax,
@@ -523,9 +553,11 @@ def _render(step: int) -> Figure:
     ax.set_aspect("equal")
     ax.set_axis_off()
 
-    # The page arrives with the stage that reads it.
-    if step >= _stage_step(0):
+    # The page opens the sequence; the arrow into SURVEY waits for SURVEY.
+    if step >= _STEP_INPUT:
         _page_input(ax)
+    if step >= _stage_step(0):
+        _page_arrow(ax)
     for index, stage in enumerate(_STAGES):
         if step >= _stage_step(index):
             _stage(ax, index, stage)
