@@ -46,11 +46,23 @@ together in one deck.
 
 Besides the complete diagram, the module writes a build-up sequence — one image
 per reveal step, each adding the next piece of the process — for walking an
-audience through it a stage at a time. A step reveals a stage together with
-whatever feeds it, so step *n* is stage *n* until the last step closes the
-loop. Every step is rendered into the same frame as the whole, so the images
-can be stacked on one slide (or advanced through) without anything shifting
-between them.
+audience through it a piece at a time. A step reveals a single element rather
+than a whole stage: the box, then the gate or return edge it owns, then the
+artifact it leaves behind::
+
+    1  the informal conjecture   10  ATTACK
+    2  GROUND                    11  attack audit gate
+    3  the working file          12  refutation return
+    4  STATE                     13  the attack plan
+    5  the falsification hunt    14  PROMOTE
+    6  the hunt harness          15  promotion audit gate
+    7  REGISTER                  16  statement span
+    8  register audit gate       17  the theorem page
+    9  the conjecture page       18  return to the graph
+
+Every step is rendered into the same frame as the whole, so the images can be
+stacked on one slide (or advanced through) without anything shifting between
+them.
 
 Fourth of a series of meta-figures, one per README process phase. Regenerate
 with ``just figure process-theorem-proving``.
@@ -193,6 +205,7 @@ class _Chip:
     """
 
     index: int
+    step: int
     name: str
     gloss: str
     durable: bool
@@ -300,47 +313,67 @@ _STAGES: tuple[_Stage, ...] = (
 _CHIPS: tuple[_Chip, ...] = (
     _Chip(
         index=0,
+        step=3,
         name="conjecture.md",
         gloss="evidence map, dispositions",
         durable=False,
     ),
     _Chip(
         index=1,
+        step=6,
         name="hunt/",
         gloss="kept across every re-hunt",
         durable=False,
     ),
     _Chip(
         index=2,
+        step=9,
         name="docs/conj/<name>.md",
         gloss="beside its Prop def in Lean",
         durable=True,
     ),
     _Chip(
         index=3,
+        step=13,
         name="attack.md",
         gloss="the DAG, session-scoped",
         durable=False,
     ),
     _Chip(
         index=4,
+        step=17,
         name="docs/theorems/<name>.md",
         gloss="written from the Lean proof",
         durable=True,
     ),
 )
-"""One artifact per stage, in stage order."""
+"""One artifact per stage, in stage order. Each follows the stage that writes it
+by a step, and where the stage owns a gate or a return edge, follows that too."""
 
-_GATES: tuple[int, ...] = (1, 2, 3, 4)
-"""Stages held in a loop until a check they did not write comes back. GROUND
-has none: it is the only stage whose output is a reading of what already
-exists rather than a claim of its own."""
+_GATES: tuple[tuple[int, int], ...] = ((1, 5), (2, 8), (3, 11), (4, 15))
+"""Stages held in a loop until a check they did not write comes back, each
+paired with the reveal step that adds the loop — the step after the stage it
+holds. GROUND has none: it is the only stage whose output is a reading of what
+already exists rather than a claim of its own."""
 
-_STEP_FIRST_STAGE: int = 1
-"""Reveal step that adds GROUND; each later stage follows one step behind, so
-a step number below :data:`_STEP_RETURN` is also the stage's badge number."""
+_STEP_INPUT: int = 1
+"""Reveal step that puts the informal conjecture on screen, before anything
+acts on it."""
 
-_STEP_RETURN: int = _STEP_FIRST_STAGE + len(_STAGES)  # one past the last stage
+_STAGE_STEPS: tuple[int, ...] = (2, 4, 7, 10, 14)
+"""Reveal step at which each stage box appears, in pipeline order. The gaps are
+uneven because a stage is followed by whatever it owns — a gate loop, a return
+edge, an artifact — one element per step."""
+
+_STEP_REFUTATION: int = 12
+"""Reveal step that adds the mid-attack refutation return, after the gate on
+ATTACK that sends work back down it."""
+
+_STEP_STATEMENT: int = 16
+"""Reveal step that adds the statement span, once PROMOTE exists to receive the
+``Prop`` def REGISTER committed."""
+
+_STEP_RETURN: int = 18
 """Reveal step that closes the loop with the return path."""
 
 _TOTAL_STEPS: int = _STEP_RETURN
@@ -350,7 +383,7 @@ diagram."""
 
 def _stage_step(index: int) -> int:
     """Return the reveal step at which the stage at ``index`` appears."""
-    return _STEP_FIRST_STAGE + index
+    return _STAGE_STEPS[index]
 
 
 def _stage_x(index: int) -> float:
@@ -453,7 +486,7 @@ def _rule(ax: Axes, index: int, y: float) -> None:
 
 
 def _conjecture_input(ax: Axes) -> None:
-    """Draw the informal-conjecture feed above GROUND, and its arrow in."""
+    """Draw the informal-conjecture feed above GROUND."""
     _box(
         ax,
         (_stage_x(0), _INPUT_BOTTOM, _STAGE_W, _INPUT_H),
@@ -480,6 +513,14 @@ def _conjecture_input(ax: Axes) -> None:
         ha="center",
         va="center",
     )
+
+
+def _conjecture_arrow(ax: Axes) -> None:
+    """Draw the arrow from the informal conjecture down into GROUND.
+
+    It arrives with the box it lands on rather than with the chip it leaves, so
+    no step ever shows an arrow into empty space.
+    """
     _arrow(
         ax,
         (_stage_cx(0), _INPUT_BOTTOM),
@@ -581,8 +622,8 @@ def _gates(ax: Axes, step: int) -> None:
     something that did not write it — a counterexample search, a fresh-eyes
     auditor — fails to break it.
     """
-    for index in _GATES:
-        if step < _stage_step(index):
+    for index, gate_step in _GATES:
+        if step < gate_step:
             continue
         center = _stage_cx(index)
         _arrow(
@@ -596,9 +637,9 @@ def _gates(ax: Axes, step: int) -> None:
 
 
 def _artifacts(ax: Axes, step: int) -> None:
-    """Draw the artifact chips, each with the stage that writes it."""
+    """Draw the artifact chips, each a step behind the stage that writes it."""
     for chip in _CHIPS:
-        if step < _stage_step(chip.index):
+        if step < chip.step:
             continue
         _box(
             ax,
@@ -644,7 +685,7 @@ def _statement_span(ax: Axes, step: int) -> None:
     untouched, which is the point of committing it as a def instead of
     restating it at proof time.
     """
-    if step < _stage_step(4):
+    if step < _STEP_STATEMENT:
         return
     gap_x = _stage_x(4) - _STAGE_GAP / 2.0
     _routed_arrow(
@@ -662,7 +703,7 @@ def _statement_span(ax: Axes, step: int) -> None:
 
 def _refutation_return(ax: Axes, step: int) -> None:
     """Draw the return from a mid-attack refutation to the statement."""
-    if step < _stage_step(3):
+    if step < _STEP_REFUTATION:
         return
     start_x = _stage_x(3) + _REFUTE_X_OFFSET
     end_x = _stage_x(1) + _REFUTE_X_OFFSET
@@ -724,9 +765,11 @@ def _render(step: int) -> Figure:
     ax.set_aspect("equal")
     ax.set_axis_off()
 
-    # The informal conjecture arrives with the stage that grounds it.
-    if step >= _stage_step(0):
+    # The conjecture opens the sequence; the arrow into GROUND waits for GROUND.
+    if step >= _STEP_INPUT:
         _conjecture_input(ax)
+    if step >= _stage_step(0):
+        _conjecture_arrow(ax)
     for index, stage in enumerate(_STAGES):
         if step >= _stage_step(index):
             _stage(ax, index, stage)
