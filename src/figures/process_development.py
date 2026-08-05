@@ -4,11 +4,9 @@ Renders the second phase of the research process described in the repository
 README — how a page in the concept graph becomes a tested Python structure and
 a proved Lean module — as a single diagram sized for a presentation slide. The
 stages are the ones the ``add-python-topic`` and ``add-lean-topic`` skills
-actually run, and the two skills share one box per stage rather than two
-pipelines, because they are step-for-step the same process: survey what
-exists, write the plan file, build, audit against the plan, gate. Each box
-names only the tooling the stage runs on — the skills you type, the agents
-dispatched for you, and the checks that must come back clean.
+actually run, and the two skills are drawn as halves of one box per stage
+rather than as two pipelines, because they are step-for-step the same process:
+survey what exists, write the plan file, build, audit against the plan, gate.
 The two feedback edges (the audit gate on proving and on the test run, and the
 implementation notes written back to the page) are drawn because they are what
 make the phase a loop rather than a line.
@@ -55,8 +53,8 @@ _MARGIN_R: float = 17.4
 _STAGE_W: float = 3.0
 """Width of a pipeline stage box."""
 
-_STAGE_H: float = 2.5
-"""Height of a pipeline stage box; it carries the stage's tooling list."""
+_STAGE_H: float = 3.8
+"""Height of a pipeline stage box; it carries two language tracks."""
 
 _STAGE_GAP: float = 0.45
 """Horizontal gap between consecutive stage boxes, holding the flow arrow."""
@@ -73,16 +71,25 @@ _INPUT_BOTTOM: float = 6.55
 _INPUT_H: float = 0.9
 """Height of the input chip."""
 
-_LINE_STEP: float = 0.34
-"""Vertical distance between consecutive tooling lines."""
+_PYTHON_LABEL_Y: float = _STAGE_TOP - 1.10
+"""Baseline of the Python track's label inside a stage box."""
 
-_FILE_TOP: float = 3.0
+_LEAN_LABEL_Y: float = _STAGE_TOP - 2.40
+"""Baseline of the Lean track's label inside a stage box."""
+
+_TRACK_DIVIDER_Y: float = _STAGE_TOP - 2.10
+"""Height of the hairline separating the two language tracks."""
+
+_LINE_STEP: float = 0.34
+"""Vertical distance between consecutive body lines."""
+
+_FILE_TOP: float = 1.9
 """Top edge of the working-file chips, below the stage row."""
 
 _FILE_H: float = 0.9
 """Height of a working-file chip."""
 
-_RETURN_Y: float = 1.7
+_RETURN_Y: float = 0.6
 """Height of the horizontal run of the write-back path."""
 
 _SPINE_X: float = _MARGIN_L - 0.32
@@ -105,76 +112,88 @@ _RETURN_COLOR: str = style.CATEGORICAL[1]
 
 
 @dataclass(frozen=True, slots=True)
-class _Tool:
-    """One tooling line in a stage box, styled by how it participates."""
-
-    label: str
-    color: str
-    bold: bool
-
-
-def _skill(label: str) -> _Tool:
-    """Return the tooling line for a skill or recipe the user types."""
-    return _Tool(label, style.SLATE, True)
-
-
-def _agent(label: str) -> _Tool:
-    """Return the tooling line for a subagent or MCP surface that runs."""
-    return _Tool(label, style.INK, False)
-
-
-def _check(label: str) -> _Tool:
-    """Return the tooling line for a check the stage cannot pass itself."""
-    return _Tool(label, _AUDIT_COLOR, False)
-
-
-@dataclass(frozen=True, slots=True)
 class _Stage:
-    """One box in the development pipeline: its name and its tooling.
+    """One box in the development pipeline, split across the two stacks.
 
-    Each stage covers both language tracks at once — the two skills run it
-    step-for-step the same way — so the tooling of both appears in one list.
+    Body lines are pre-wrapped rather than flowed: at this size the wrap
+    points are a layout decision, not something to leave to a text engine.
     """
 
     number: int
     title: str
-    tools: tuple[_Tool, ...]
+    python: tuple[str, ...]
+    lean: tuple[str, ...]
+    tool: str
 
 
 _STAGES: tuple[_Stage, ...] = (
     _Stage(
         number=1,
         title="SURVEY",
-        tools=(
-            _skill("/add-python-topic"),
-            _skill("/add-lean-topic"),
-            _agent("mathlib-scout"),
+        python=(
+            "read src/research, extend",
+            "its shape — never fork it",
         ),
+        lean=(
+            "map claims onto Mathlib —",
+            "never redefine what it has",
+        ),
+        tool="page.md · mathlib-scout",
     ),
     _Stage(
         number=2,
         title="MAP",
-        tools=(),
+        python=(
+            "spec.md maps each section",
+            "to its code artifact",
+        ),
+        lean=(
+            "coverage.md rules: reuse ·",
+            "extend · define · backlog",
+        ),
+        tool="every entry cites its block",
     ),
     _Stage(
         number=3,
         title="BUILD",
-        tools=(),
+        python=(
+            "examples become fixtures,",
+            "theorems become properties",
+        ),
+        lean=(
+            "state every declaration;",
+            "proof bodies stay sorry",
+        ),
+        tool="docstrings cite the page",
     ),
     _Stage(
         number=4,
         title="AUDIT",
-        tools=(_check("test-auditor"), _check("statement-auditor")),
+        python=(
+            "test-auditor diffs suite",
+            "against the page itself",
+        ),
+        lean=(
+            "statements checked against",
+            "the map before proving",
+        ),
+        tool="re-dispatch until CLEAN",
     ),
     _Stage(
         number=5,
         title="GATE",
-        tools=(_skill("just check"), _skill("just lean-check")),
+        python=(
+            "just check — a red test is",
+            "a bug or a false claim",
+        ),
+        lean=(
+            "discharge every sorry;",
+            "lean-check, audit axioms",
+        ),
+        tool="the build audits the graph",
     ),
 )
-"""The pipeline, left to right. MAP and BUILD list nothing: they are the
-stages the main agent performs alone, writing the plan files and the sources
-the surrounding stages then check."""
+"""The pipeline, left to right."""
 
 _STEP_FIRST_STAGE: int = 1
 """Reveal step that adds SURVEY; each later stage follows one step behind, so
@@ -304,8 +323,33 @@ def _page_input(ax: Axes) -> None:
     )
 
 
+def _track(
+    ax: Axes, index: int, label: str, lines: tuple[str, ...], top: float
+) -> None:
+    """Draw one language track inside a stage box, downward from ``top``."""
+    x = _stage_x(index)
+    ax.text(
+        x + 0.2,
+        top,
+        label,
+        fontsize=12,
+        fontweight="bold",
+        color=style.SLATE,
+        va="center",
+    )
+    for line_index, line in enumerate(lines):
+        ax.text(
+            x + 0.2,
+            top - 0.38 - line_index * _LINE_STEP,
+            line,
+            fontsize=12,
+            color=style.INK,
+            va="center",
+        )
+
+
 def _stage(ax: Axes, index: int, stage: _Stage) -> None:
-    """Draw the stage box at ``index``: badge, title, and tooling lines."""
+    """Draw the stage box at ``index``: badge, title, both tracks, tooling tag."""
     x = _stage_x(index)
     _box(
         ax,
@@ -338,20 +382,18 @@ def _stage(ax: Axes, index: int, stage: _Stage) -> None:
     )
     _rule(ax, index, _STAGE_TOP - 0.78)
 
-    # The tooling list is centered in the band under the title rule, so a
-    # one-line stage reads as deliberately sparse rather than top-heavy.
-    center_y = (_STAGE_TOP - 0.78 + _STAGE_BOTTOM) / 2.0
-    top = center_y + (len(stage.tools) - 1) * _LINE_STEP / 2.0
-    for line_index, tool in enumerate(stage.tools):
-        ax.text(
-            x + 0.2,
-            top - line_index * _LINE_STEP,
-            tool.label,
-            fontsize=12,
-            fontweight="bold" if tool.bold else "normal",
-            color=tool.color,
-            va="center",
-        )
+    _track(ax, index, "PYTHON", stage.python, _PYTHON_LABEL_Y)
+    _rule(ax, index, _TRACK_DIVIDER_Y)
+    _track(ax, index, "LEAN", stage.lean, _LEAN_LABEL_Y)
+
+    ax.text(
+        x + 0.2,
+        _STAGE_BOTTOM + 0.30,
+        stage.tool,
+        fontsize=12,
+        color=style.MIST,
+        va="center",
+    )
 
 
 def _flow(ax: Axes, step: int) -> None:

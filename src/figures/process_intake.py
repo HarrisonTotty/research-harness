@@ -89,67 +89,72 @@ _RETURN_COLOR: str = style.CATEGORICAL[1]
 
 
 @dataclass(frozen=True, slots=True)
-class _Tool:
-    """One tooling line in a stage box, styled by how it participates."""
-
-    label: str
-    color: str
-    bold: bool
-
-
-def _skill(label: str) -> _Tool:
-    """Return the tooling line for a skill or recipe the user types."""
-    return _Tool(label, style.SLATE, True)
-
-
-def _agent(label: str) -> _Tool:
-    """Return the tooling line for a subagent or MCP surface that runs."""
-    return _Tool(label, style.INK, False)
-
-
-def _check(label: str) -> _Tool:
-    """Return the tooling line for a check the stage cannot pass itself."""
-    return _Tool(label, _AUDIT_COLOR, False)
-
-
-@dataclass(frozen=True, slots=True)
 class _Stage:
-    """One box in the intake pipeline: its name and the tooling it runs on."""
+    """One box in the intake pipeline.
+
+    Body lines are pre-wrapped rather than flowed: at this size the wrap
+    points are a layout decision, not something to leave to a text engine.
+    """
 
     number: int
     title: str
-    tools: tuple[_Tool, ...]
+    body: tuple[str, ...]
+    tool: str
 
 
 _STAGES: tuple[_Stage, ...] = (
     _Stage(
         number=1,
         title="SURVEY",
-        tools=(_skill("/add-logseq-topic"), _agent("search_logseq")),
+        body=(
+            "search the graph for the",
+            "topic and its synonyms —",
+            "extend, never fork",
+        ),
+        tool="search_logseq",
     ),
     _Stage(
         number=2,
         title="RESEARCH",
-        tools=(_agent("source-reader agents"),),
+        body=(
+            "one subagent per source;",
+            "original sources first,",
+            "every claim attributed",
+        ),
+        tool="source-reader agents",
     ),
     _Stage(
         number=3,
         title="DRAFT",
-        tools=(),
+        body=(
+            "build the page from the",
+            "fact map alone: theorems,",
+            "examples, attributions",
+        ),
+        tool="house page template",
     ),
     _Stage(
         number=4,
         title="AUDIT",
-        tools=(_check("draft-auditor"),),
+        body=(
+            "a second agent diffs draft",
+            "against facts; unsupported",
+            "claims never ship",
+        ),
+        tool="draft-auditor · until CLEAN",
     ),
     _Stage(
         number=5,
         title="PUBLISH",
-        tools=(_agent("logseq mcp"), _check("link check")),
+        body=(
+            "transcribe, then re-read",
+            "the live page against the",
+            "draft; resolve every link",
+        ),
+        tool="logseq mcp · link check",
     ),
 )
-"""The pipeline, left to right. DRAFT lists nothing: it is the one stage the
-main agent performs alone, from the fact map already on disk."""
+"""The pipeline, left to right."""
 
 _STEP_FIRST_STAGE: int = 1
 """Reveal step that adds SURVEY; each later stage follows one step behind, so
@@ -232,7 +237,7 @@ def _arrow(
 
 
 def _stage(ax: Axes, index: int, stage: _Stage) -> None:
-    """Draw the stage box at ``index``: badge, title, and tooling lines."""
+    """Draw the stage box at ``index``: badge, title, body, and tooling tag."""
     x = _stage_x(index)
     _box(
         ax,
@@ -271,20 +276,23 @@ def _stage(ax: Axes, index: int, stage: _Stage) -> None:
         solid_capstyle="butt",
     )
 
-    # The tooling list is centered in the band under the title rule, so a
-    # one-line stage reads as deliberately sparse rather than top-heavy.
-    center_y = (_STAGE_TOP - 0.78 + _STAGE_BOTTOM) / 2.0
-    top = center_y + (len(stage.tools) - 1) * 0.34 / 2.0
-    for line_index, tool in enumerate(stage.tools):
+    for line_index, line in enumerate(stage.body):
         ax.text(
             x + 0.2,
-            top - line_index * 0.34,
-            tool.label,
+            _STAGE_TOP - 1.10 - line_index * 0.34,
+            line,
             fontsize=12,
-            fontweight="bold" if tool.bold else "normal",
-            color=tool.color,
+            color=style.INK,
             va="center",
         )
+    ax.text(
+        x + 0.2,
+        _STAGE_BOTTOM + 0.30,
+        stage.tool,
+        fontsize=12,
+        color=style.MIST,
+        va="center",
+    )
 
 
 def _flow(ax: Axes, step: int) -> None:

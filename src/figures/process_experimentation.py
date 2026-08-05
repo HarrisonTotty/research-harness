@@ -71,8 +71,8 @@ _MARGIN_R: float = 17.4
 _STAGE_W: float = 3.0
 """Width of a pipeline stage box."""
 
-_STAGE_H: float = 2.5
-"""Height of a pipeline stage box; it carries the stage's tooling list."""
+_STAGE_H: float = 3.8
+"""Height of a pipeline stage box; it carries two beats of its stage."""
 
 _STAGE_GAP: float = 0.45
 """Horizontal gap between consecutive stage boxes, holding the flow arrow."""
@@ -89,8 +89,17 @@ _INPUT_BOTTOM: float = 6.55
 _INPUT_H: float = 0.9
 """Height of the input chip."""
 
+_FIRST_LABEL_Y: float = _STAGE_TOP - 1.10
+"""Baseline of the first beat's label inside a stage box."""
+
+_SECOND_LABEL_Y: float = _STAGE_TOP - 2.40
+"""Baseline of the second beat's label inside a stage box."""
+
+_BEAT_DIVIDER_Y: float = _STAGE_TOP - 2.10
+"""Height of the hairline separating a stage's two beats."""
+
 _LINE_STEP: float = 0.34
-"""Vertical distance between consecutive tooling lines."""
+"""Vertical distance between consecutive body lines."""
 
 _GATE_SPAN: float = 0.45
 """Half-width of an audit gate's loop, measured from the stage's center."""
@@ -102,20 +111,20 @@ _BUG_X_OFFSET: float = 0.3
 """Inset of the bug-first path's verticals from a stage box's left edge; it
 keeps them clear of the audit loops, which are centered on the box."""
 
-_FILE_TOP: float = 3.0
+_FILE_TOP: float = 1.9
 """Top edge of the artifact chips, below the stage row."""
 
 _FILE_H: float = 0.9
 """Height of an artifact chip."""
 
-_PREREG_Y: float = 1.7
+_PREREG_Y: float = 0.65
 """Height of the horizontal run of the pre-registration span, below the chips."""
 
 _PREREG_ENTRY_Y: float = _STAGE_BOTTOM + 0.5
 """Height at which the pre-registration span enters ANALYZE, below the flow
 arrow that shares the same gap."""
 
-_RETURN_Y: float = 1.3
+_RETURN_Y: float = 0.25
 """Height of the horizontal run of the write-back path."""
 
 _SPINE_X: float = _MARGIN_L - 0.32
@@ -143,36 +152,26 @@ commitment forward in time rather than a failure backward."""
 
 
 @dataclass(frozen=True, slots=True)
-class _Tool:
-    """One tooling line in a stage box, styled by how it participates."""
+class _Beat:
+    """One half of a stage box: a labelled move within that stage.
+
+    Body lines are pre-wrapped rather than flowed: at this size the wrap
+    points are a layout decision, not something to leave to a text engine.
+    """
 
     label: str
-    color: str
-    bold: bool
-
-
-def _skill(label: str) -> _Tool:
-    """Return the tooling line for a skill or recipe the user types."""
-    return _Tool(label, style.SLATE, True)
-
-
-def _agent(label: str) -> _Tool:
-    """Return the tooling line for a subagent or MCP surface that runs."""
-    return _Tool(label, style.INK, False)
-
-
-def _check(label: str) -> _Tool:
-    """Return the tooling line for a check the stage cannot pass itself."""
-    return _Tool(label, _AUDIT_COLOR, False)
+    lines: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class _Stage:
-    """One box in the pipeline: its name and the tooling it runs on."""
+    """One box in the pipeline, split into the two beats it runs in order."""
 
     number: int
     title: str
-    tools: tuple[_Tool, ...]
+    first: _Beat
+    second: _Beat
+    tool: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,32 +193,97 @@ _STAGES: tuple[_Stage, ...] = (
     _Stage(
         number=1,
         title="DESIGN",
-        tools=(_skill("/design-experiment"),),
+        first=_Beat(
+            label="CHECKPOINTS",
+            lines=(
+                "hypothesis · controls ·",
+                "seeds · schema, one by one",
+            ),
+        ),
+        second=_Beat(
+            label="PRE-REGISTER",
+            lines=(
+                "predict per region, cited;",
+                "mark the unpredicted",
+            ),
+        ),
+        tool="/design-experiment",
     ),
     _Stage(
         number=2,
         title="IMPLEMENT",
-        tools=(_skill("/add-experiment"), _check("experiment-auditor")),
+        first=_Beat(
+            label="BUILD",
+            lines=(
+                "one module whose defaults",
+                "are the designed sweep",
+            ),
+        ),
+        second=_Beat(
+            label="PILOT",
+            lines=(
+                "a few cells only — check",
+                "schema, runtime, variance",
+            ),
+        ),
+        tool="/add-experiment · pilot",
     ),
     _Stage(
         number=3,
         title="RUN",
-        tools=(_skill("just experiment <name>"),),
+        first=_Beat(
+            label="SWEEP",
+            lines=(
+                "you launch the full grid —",
+                "a clean audit unlocks it",
+            ),
+        ),
+        second=_Beat(
+            label="ARTIFACTS",
+            lines=(
+                "a timestamped frame beside",
+                "meta.json: seeds, commit",
+            ),
+        ),
+        tool="just experiment <name>",
     ),
     _Stage(
         number=4,
         title="ANALYZE",
-        tools=(_skill("/explore-results"), _agent("data-profiler")),
+        first=_Beat(
+            label="PROFILE",
+            lines=(
+                "profile the frame against",
+                "the expected grid first",
+            ),
+        ),
+        second=_Beat(
+            label="SCRIPT",
+            lines=(
+                "grade every prediction,",
+                "never from raw frames",
+            ),
+        ),
+        tool="/explore-results · profiler",
     ),
     _Stage(
         number=5,
         title="INTERPRET",
-        tools=(
-            _skill("/critique-results"),
-            _agent("literature-checker"),
-            _agent("logseq mcp"),
-            _check("results-auditor"),
+        first=_Beat(
+            label="TRIAGE",
+            lines=(
+                "a contradiction with the",
+                "literature is a bug first",
+            ),
         ),
+        second=_Beat(
+            label="WRITE",
+            lines=(
+                "draft from the numbers,",
+                "audit, publish, write back",
+            ),
+        ),
+        tool="literature-checker · Logseq",
     ),
 )
 """The pipeline, left to right."""
@@ -413,8 +477,31 @@ def _hypothesis_input(ax: Axes) -> None:
     )
 
 
+def _beat(ax: Axes, index: int, beat: _Beat, top: float) -> None:
+    """Draw one beat inside a stage box, downward from ``top``."""
+    x = _stage_x(index)
+    ax.text(
+        x + 0.2,
+        top,
+        beat.label,
+        fontsize=12,
+        fontweight="bold",
+        color=style.SLATE,
+        va="center",
+    )
+    for line_index, line in enumerate(beat.lines):
+        ax.text(
+            x + 0.2,
+            top - 0.38 - line_index * _LINE_STEP,
+            line,
+            fontsize=12,
+            color=style.INK,
+            va="center",
+        )
+
+
 def _stage(ax: Axes, index: int, stage: _Stage) -> None:
-    """Draw the stage box at ``index``: badge, title, and tooling lines."""
+    """Draw the stage box at ``index``: badge, title, both beats, tooling tag."""
     x = _stage_x(index)
     _box(
         ax,
@@ -447,20 +534,18 @@ def _stage(ax: Axes, index: int, stage: _Stage) -> None:
     )
     _rule(ax, index, _STAGE_TOP - 0.78)
 
-    # The tooling list is centered in the band under the title rule, so a
-    # one-line stage reads as deliberately sparse rather than top-heavy.
-    center_y = (_STAGE_TOP - 0.78 + _STAGE_BOTTOM) / 2.0
-    top = center_y + (len(stage.tools) - 1) * _LINE_STEP / 2.0
-    for line_index, tool in enumerate(stage.tools):
-        ax.text(
-            x + 0.2,
-            top - line_index * _LINE_STEP,
-            tool.label,
-            fontsize=12,
-            fontweight="bold" if tool.bold else "normal",
-            color=tool.color,
-            va="center",
-        )
+    _beat(ax, index, stage.first, _FIRST_LABEL_Y)
+    _rule(ax, index, _BEAT_DIVIDER_Y)
+    _beat(ax, index, stage.second, _SECOND_LABEL_Y)
+
+    ax.text(
+        x + 0.2,
+        _STAGE_BOTTOM + 0.30,
+        stage.tool,
+        fontsize=12,
+        color=style.MIST,
+        va="center",
+    )
 
 
 def _flow(ax: Axes, step: int) -> None:
