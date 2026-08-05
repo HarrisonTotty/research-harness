@@ -38,11 +38,22 @@ same reveal mechanics, so all of them sit together in one deck.
 
 Besides the complete diagram, the module writes a build-up sequence — one image
 per reveal step, each adding the next piece of the process — for walking an
-audience through it a phase at a time. A step reveals a phase together with
-whatever feeds it, so step *n* is phase *n* until the last step closes the
-loop. Every step is rendered into the same frame as the whole, so the images
-can be stacked on one slide (or advanced through) without anything shifting
-between them.
+audience through it a piece at a time. A step reveals a single element rather
+than a whole phase — the box, then the artifact it leaves behind, and where a
+phase re-opens an earlier one, the return edge between the two::
+
+    1  the source            9  PROVING
+    2  INTAKE               10  refutation return
+    3  intake artifact      11  proving artifact
+    4  DEVELOPMENT          12  write-back rail
+    5  development artifact 13  PUBLISHING
+    6  EXPLORATION          14  publishing artifact
+    7  bug-first return     15  the writeup
+    8  exploration artifact 16  publication loop
+
+Every step is rendered into the same frame as the whole, so the images can be
+stacked on one slide (or advanced through) without anything shifting between
+them.
 
 Regenerate with ``just figure process-overview``.
 """
@@ -285,11 +296,34 @@ left into the graph."""
 _WRITEBACK_FEEDERS: tuple[int, ...] = (1, 2)
 """Phases whose artifacts join the rail on its way past them."""
 
-_STEP_FIRST_PHASE: int = 1
-"""Reveal step that adds INTAKE; each later phase follows one step behind, so
-a step number below :data:`_STEP_RETURN` is also the phase's badge number."""
+_STEP_SOURCE: int = 1
+"""Reveal step that adds the source chip, alone: the process starts with
+something to read, before there is anything to run it through."""
 
-_STEP_RETURN: int = _STEP_FIRST_PHASE + len(_PHASES)  # one past the last phase
+_PHASE_STEPS: tuple[int, ...] = (2, 4, 6, 9, 13)
+"""Reveal step at which each phase box appears, in phase order. A phase and the
+artifact it leaves behind are consecutive steps, except where a return edge
+falls between them — the edge is what the phase found, so it is shown before
+the artifact that records the finding."""
+
+_CHIP_STEPS: tuple[int, ...] = (3, 5, 8, 11, 14)
+"""Reveal step at which each artifact chip appears, in phase order."""
+
+_STEP_BUG_RETURN: int = 7
+"""Reveal step that adds the bug-first return, after EXPLORATION exists to
+raise the contradiction and before its results are shown as an artifact."""
+
+_STEP_REFUTATION: int = 10
+"""Reveal step that adds the refutation return, likewise after PROVING."""
+
+_STEP_WRITEBACK: int = 12
+"""Reveal step that adds the write-back rail, once every artifact it joins has
+been revealed."""
+
+_STEP_WRITEUP: int = 15
+"""Reveal step that adds the writeup chip above PUBLISHING."""
+
+_STEP_RETURN: int = 16
 """Reveal step that closes the loop with the publication path."""
 
 _TOTAL_STEPS: int = _STEP_RETURN
@@ -298,8 +332,13 @@ diagram."""
 
 
 def _phase_step(index: int) -> int:
-    """Return the reveal step at which the phase at ``index`` appears."""
-    return _STEP_FIRST_PHASE + index
+    """Return the reveal step at which the phase box at ``index`` appears."""
+    return _PHASE_STEPS[index]
+
+
+def _chip_step(index: int) -> int:
+    """Return the reveal step at which the artifact chip at ``index`` appears."""
+    return _CHIP_STEPS[index]
 
 
 def _phase_x(index: int) -> float:
@@ -432,8 +471,16 @@ def _chip(ax: Axes, index: int, title: str, gloss: str, bottom: float) -> None:
 
 
 def _source_input(ax: Axes) -> None:
-    """Draw what starts the process, above INTAKE, and its arrow into it."""
+    """Draw what starts the process, above INTAKE."""
     _chip(ax, 0, "the source", "a paper, a spec, a curiosity", _INPUT_BOTTOM)
+
+
+def _source_arrow(ax: Axes) -> None:
+    """Draw the arrow from the source down into INTAKE.
+
+    It arrives with the box it lands on rather than with the chip it leaves,
+    so no step ever shows an arrow into empty space.
+    """
     _arrow(
         ax,
         (_phase_cx(0), _INPUT_BOTTOM),
@@ -538,7 +585,7 @@ def _flow(ax: Axes, step: int) -> None:
 def _artifacts(ax: Axes, step: int) -> None:
     """Draw the artifact chips, each with the phase that leaves it behind."""
     for chip in _CHIPS:
-        if step < _phase_step(chip.index):
+        if step < _chip_step(chip.index):
             continue
         _box(
             ax,
@@ -577,7 +624,7 @@ def _artifacts(ax: Axes, step: int) -> None:
 
 def _bug_first_return(ax: Axes, step: int) -> None:
     """Draw the return from a literature contradiction to the code."""
-    if step < _phase_step(2):
+    if step < _STEP_BUG_RETURN:
         return
     start_x = _phase_x(2) + _BUG_X_OFFSET
     end_x = _phase_x(1) + _BUG_X_OFFSET
@@ -599,7 +646,7 @@ def _refutation_return(ax: Axes, step: int) -> None:
     It nests above the bug-first path and lands on a different column of the
     box they share, so the two never run along the same vertical.
     """
-    if step < _phase_step(3):
+    if step < _STEP_REFUTATION:
         return
     start_x = _phase_x(3) + _REFUTE_X_OFFSET
     end_x = _phase_x(2) + _REFUTE_X_OFFSET
@@ -622,7 +669,7 @@ def _writeback_rail(ax: Axes, step: int) -> None:
     phase box: what a skill records at the end of a run is a page, and the
     next phase to read that page may be any of them.
     """
-    if step < _phase_step(_WRITEBACK_SOURCE):
+    if step < _STEP_WRITEBACK:
         return
     chip_bottom = _FILE_TOP - _FILE_H
     for index in _WRITEBACK_FEEDERS:
@@ -689,11 +736,13 @@ def _render(step: int) -> Figure:
     ax.set_aspect("equal")
     ax.set_axis_off()
 
-    # The source arrives with the phase that turns it into a page, and the
-    # writeup with the phase that produces it.
-    if step >= _phase_step(0):
+    # The source opens the sequence on its own; the writeup closes it, one step
+    # after the artifact PUBLISHING leaves behind.
+    if step >= _STEP_SOURCE:
         _source_input(ax)
-    if step >= _phase_step(4):
+    if step >= _phase_step(0):
+        _source_arrow(ax)
+    if step >= _STEP_WRITEUP:
         _published_output(ax)
     for index, phase in enumerate(_PHASES):
         if step >= _phase_step(index):
