@@ -5,8 +5,8 @@ how a paper becomes a concept page, a tested implementation, a graded
 experiment, a proved theorem, and finally something published — as a single
 diagram sized for a presentation slide. It is the overview the four
 phase-level meta-figures hang beneath: where those draw the stages *inside* a
-phase, this one draws a phase per box and keeps only what a phase is, what you
-type to run it, and the audit that has to come back ``CLEAN`` before it ends.
+phase, this one draws a phase per box and keeps only what you type to run the
+phase and the audit that has to come back ``CLEAN`` before it ends.
 
 The README's own sectioning is collapsed slightly to get five: Experimentation,
 Exploration, and Feedback are one box (EXPLORATION), because designing a sweep,
@@ -71,8 +71,8 @@ _MARGIN_R: float = 17.4
 _STAGE_W: float = 3.0
 """Width of a phase box."""
 
-_STAGE_H: float = 4.55
-"""Height of a phase box; it carries prose, commands, and the audit gate."""
+_STAGE_H: float = 3.45
+"""Height of a phase box; it carries the commands and the audit gate."""
 
 _STAGE_GAP: float = 0.45
 """Horizontal gap between consecutive phase boxes, holding the flow arrow."""
@@ -86,20 +86,17 @@ _STAGE_BOTTOM: float = _STAGE_TOP - _STAGE_H
 _HEAD_RULE_Y: float = _STAGE_TOP - 0.78
 """Height of the hairline under a phase's title."""
 
-_PROSE_TOP_Y: float = _STAGE_TOP - 1.10
-"""Baseline of the first prose line inside a phase box."""
-
 _LINE_STEP: float = 0.34
 """Vertical distance between consecutive body lines."""
 
 _GATE_RULE_Y: float = _STAGE_BOTTOM + 0.96
 """Height of the hairline separating the audit gate from the commands."""
 
-_COMMAND_CENTER_Y: float = _GATE_RULE_Y + 0.90
+_COMMAND_CENTER_Y: float = _GATE_RULE_Y + 0.86
 """Middle of the band holding a phase's commands. The list is centered on it
 rather than anchored to either end: the phases run from one command to four,
 and a centered block leaves that difference as even margin instead of a hole
-under the prose."""
+under the title."""
 
 _GATE_TOP_Y: float = _GATE_RULE_Y - 0.32
 """Baseline of the first audit-gate line."""
@@ -163,15 +160,10 @@ runs in every phase rather than between two of them."""
 
 @dataclass(frozen=True, slots=True)
 class _Phase:
-    """One box in the process: a phase, what runs it, and what gates it.
-
-    Body lines are pre-wrapped rather than flowed: at this size the wrap
-    points are a layout decision, not something to leave to a text engine.
-    """
+    """One box in the process: a phase, what runs it, and what gates it."""
 
     number: int
     title: str
-    prose: tuple[str, ...]
     commands: tuple[str, ...]
     gate: tuple[str, ...]
 
@@ -189,33 +181,18 @@ _PHASES: tuple[_Phase, ...] = (
     _Phase(
         number=1,
         title="INTAKE",
-        prose=(
-            "papers become one page",
-            "per concept; every fact",
-            "keeps its source",
-        ),
         commands=("/add-logseq-topic",),
         gate=("draft-auditor · CLEAN", "link check on live page"),
     ),
     _Phase(
         number=2,
         title="DEVELOPMENT",
-        prose=(
-            "each page becomes tested",
-            "Python and proved Lean —",
-            "the page is the spec",
-        ),
         commands=("/add-python-topic", "/add-lean-topic"),
         gate=("test-auditor · just check", "statement audit · no sorry"),
     ),
     _Phase(
         number=3,
         title="EXPLORATION",
-        prose=(
-            "predictions registered",
-            "before the sweep exists;",
-            "data graded against them",
-        ),
         commands=(
             "/design-experiment",
             "/add-experiment",
@@ -227,22 +204,12 @@ _PHASES: tuple[_Phase, ...] = (
     _Phase(
         number=4,
         title="PROVING",
-        prose=(
-            "conjectures are stated",
-            "formally, stress-tested,",
-            "then proved in Lean",
-        ),
         commands=("/add-conjecture", "/attack-conjecture"),
         gate=("conjecture-auditor · CLEAN", "proof audit · axiom audit"),
     ),
     _Phase(
         number=5,
         title="PUBLISHING",
-        prose=(
-            "what survived is rebuilt",
-            "as parameterized figures",
-            "and a generated docs site",
-        ),
         commands=("just figure <name>", "just docs"),
         gate=("docs-check · zero warnings", "no scratch plot ships"),
     ),
@@ -486,16 +453,6 @@ def _phase(ax: Axes, index: int, phase: _Phase) -> None:
         va="center",
     )
     _rule(ax, index, _HEAD_RULE_Y)
-
-    for line_index, line in enumerate(phase.prose):
-        ax.text(
-            x + 0.2,
-            _PROSE_TOP_Y - line_index * _LINE_STEP,
-            line,
-            fontsize=12,
-            color=style.INK,
-            va="center",
-        )
 
     top = _COMMAND_CENTER_Y + (len(phase.commands) - 1) * _LINE_STEP / 2.0
     for line_index, command in enumerate(phase.commands):
