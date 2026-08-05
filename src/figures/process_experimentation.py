@@ -37,11 +37,22 @@ figures sit together in one deck.
 
 Besides the complete diagram, the module writes a build-up sequence — one image
 per reveal step, each adding the next piece of the process — for walking an
-audience through it a stage at a time. A step reveals a stage together with
-whatever feeds it, so step *n* is stage *n* until the last step closes the
-loop. Every step is rendered into the same frame as the whole, so the images
-can be stacked on one slide (or advanced through) without anything shifting
-between them.
+audience through it a piece at a time. A step reveals a single element rather
+than a whole stage: the box, then the gate or return edge it owns, then the
+artifact it leaves behind::
+
+    1  the hypothesis          9  ANALYZE
+    2  DESIGN                 10  pre-registration span
+    3  the design doc         11  the analysis scratchpad
+    4  IMPLEMENT              12  INTERPRET
+    5  experiment-auditor     13  results-auditor
+    6  the pilot              14  bug-first return
+    7  RUN                    15  the results doc
+    8  the run                16  write-back
+
+Every step is rendered into the same frame as the whole, so the images can be
+stacked on one slide (or advanced through) without anything shifting between
+them.
 
 Third of a series of meta-figures, one per README process phase. Regenerate
 with ``just figure process-experimentation``.
@@ -184,6 +195,7 @@ class _Chip:
     """
 
     index: int
+    step: int
     name: str
     gloss: str
     durable: bool
@@ -291,45 +303,64 @@ _STAGES: tuple[_Stage, ...] = (
 _CHIPS: tuple[_Chip, ...] = (
     _Chip(
         index=0,
+        step=3,
         name="docs/experiments/<name>.md",
         gloss="frozen at the first run",
         durable=True,
     ),
     _Chip(
         index=1,
+        step=6,
         name="pilot/",
         gloss="scratchpad only, never a run",
         durable=False,
     ),
     _Chip(
         index=2,
+        step=8,
         name="data/results/<name>.<ts>",
         gloss="the frame and its metadata",
         durable=True,
     ),
     _Chip(
         index=3,
+        step=11,
         name="analysis/ · findings.md",
         gloss="scripts, outputs, verdicts",
         durable=False,
     ),
     _Chip(
         index=4,
+        step=15,
         name="docs/results/<name>.<ts>.md",
         gloss="every number recomputable",
         durable=True,
     ),
 )
-"""One artifact per stage, in stage order."""
+"""One artifact per stage, in stage order. Each follows the stage that writes it
+by a step, and where the stage owns a gate or a return edge, follows that too."""
 
-_GATES: tuple[int, ...] = (1, 4)
-"""Stages that loop on their own auditor."""
+_GATES: tuple[tuple[int, int], ...] = ((1, 5), (4, 13))
+"""Stages that loop on their own auditor, each paired with the reveal step that
+adds the loop — the step after the stage it holds."""
 
-_STEP_FIRST_STAGE: int = 1
-"""Reveal step that adds DESIGN; each later stage follows one step behind, so
-a step number below :data:`_STEP_RETURN` is also the stage's badge number."""
+_STEP_INPUT: int = 1
+"""Reveal step that puts the hypothesis on screen, before anything acts on it."""
 
-_STEP_RETURN: int = _STEP_FIRST_STAGE + len(_STAGES)  # one past the last stage
+_STAGE_STEPS: tuple[int, ...] = (2, 4, 7, 9, 12)
+"""Reveal step at which each stage box appears, in pipeline order. The gaps are
+uneven because a stage is followed by whatever it owns — an audit gate, a return
+edge, an artifact — one element per step."""
+
+_STEP_PREREG: int = 10
+"""Reveal step that adds the pre-registration span, once ANALYZE exists to
+receive the predictions the design doc froze."""
+
+_STEP_BUG_RETURN: int = 14
+"""Reveal step that adds the bug-first return, after the triage gate that sends
+work back down it."""
+
+_STEP_RETURN: int = 16
 """Reveal step that closes the loop with the write-back path."""
 
 _TOTAL_STEPS: int = _STEP_RETURN
@@ -339,7 +370,7 @@ diagram."""
 
 def _stage_step(index: int) -> int:
     """Return the reveal step at which the stage at ``index`` appears."""
-    return _STEP_FIRST_STAGE + index
+    return _STAGE_STEPS[index]
 
 
 def _stage_x(index: int) -> float:
@@ -442,7 +473,7 @@ def _rule(ax: Axes, index: int, y: float) -> None:
 
 
 def _hypothesis_input(ax: Axes) -> None:
-    """Draw the hypothesis feed above DESIGN, and its arrow into the stage."""
+    """Draw the hypothesis feed above DESIGN."""
     _box(
         ax,
         (_stage_x(0), _INPUT_BOTTOM, _STAGE_W, _INPUT_H),
@@ -469,6 +500,14 @@ def _hypothesis_input(ax: Axes) -> None:
         ha="center",
         va="center",
     )
+
+
+def _hypothesis_arrow(ax: Axes) -> None:
+    """Draw the arrow from the hypothesis down into DESIGN.
+
+    It arrives with the box it lands on rather than with the chip it leaves, so
+    no step ever shows an arrow into empty space.
+    """
     _arrow(
         ax,
         (_stage_cx(0), _INPUT_BOTTOM),
@@ -569,8 +608,8 @@ def _audit_gates(ax: Axes, step: int) -> None:
     phase both auditors are dispatched from inside a skill: nothing downstream
     of them starts, and nothing upstream is revisited, until the audit passes.
     """
-    for index in _GATES:
-        if step < _stage_step(index):
+    for index, gate_step in _GATES:
+        if step < gate_step:
             continue
         center = _stage_cx(index)
         _arrow(
@@ -584,9 +623,9 @@ def _audit_gates(ax: Axes, step: int) -> None:
 
 
 def _artifacts(ax: Axes, step: int) -> None:
-    """Draw the artifact chips, each with the stage that writes it."""
+    """Draw the artifact chips, each a step behind the stage that writes it."""
     for chip in _CHIPS:
-        if step < _stage_step(chip.index):
+        if step < chip.step:
             continue
         _box(
             ax,
@@ -631,7 +670,7 @@ def _prereg_span(ax: Axes, step: int) -> None:
     it crosses nothing: the predictions travel the length of the phase
     untouched, which is the point of writing them down first.
     """
-    if step < _stage_step(3):
+    if step < _STEP_PREREG:
         return
     gap_x = _stage_x(3) - _STAGE_GAP / 2.0
     _routed_arrow(
@@ -649,7 +688,7 @@ def _prereg_span(ax: Axes, step: int) -> None:
 
 def _bug_first_return(ax: Axes, step: int) -> None:
     """Draw the return from a literature contradiction to the experiment."""
-    if step < _stage_step(4):
+    if step < _STEP_BUG_RETURN:
         return
     start_x = _stage_x(4) + _BUG_X_OFFSET
     end_x = _stage_x(1) + _BUG_X_OFFSET
@@ -710,9 +749,11 @@ def _render(step: int) -> Figure:
     ax.set_aspect("equal")
     ax.set_axis_off()
 
-    # The hypothesis arrives with the stage that turns it into a design.
-    if step >= _stage_step(0):
+    # The hypothesis opens the sequence; the arrow into DESIGN waits for DESIGN.
+    if step >= _STEP_INPUT:
         _hypothesis_input(ax)
+    if step >= _stage_step(0):
+        _hypothesis_arrow(ax)
     for index, stage in enumerate(_STAGES):
         if step >= _stage_step(index):
             _stage(ax, index, stage)
