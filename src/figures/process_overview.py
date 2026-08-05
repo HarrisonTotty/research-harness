@@ -127,14 +127,16 @@ _BUG_Y: float = 8.62
 _BUG_X_OFFSET: float = 0.3
 """Inset of the bug-first path's verticals from a phase box's left edge."""
 
-_REFUTE_Y: float = 9.16
-"""Height of the horizontal run of the refutation return path, above the
-bug-first path it nests around."""
+_REFUTE_Y: float = _BUG_Y
+"""Height of the horizontal run of the refutation return path. The two return
+paths span disjoint stretches of the row, so they sit level rather than nested
+— they are the same kind of edge and read as one at a glance."""
 
 _REFUTE_X_OFFSET: float = 0.65
 """Inset of the refutation path's verticals; wider than
 :data:`_BUG_X_OFFSET` so the two paths never share a vertical where they meet
-on the same box."""
+on the same box, and their horizontal runs stay clear of each other at a
+shared height."""
 
 _FILE_TOP: float = _STAGE_BOTTOM - 0.3
 """Top edge of the artifact chips, below the phase row."""
@@ -643,8 +645,8 @@ def _bug_first_return(ax: Axes, step: int) -> None:
 def _refutation_return(ax: Axes, step: int) -> None:
     """Draw the return from a counterexample to the results that suggested it.
 
-    It nests above the bug-first path and lands on a different column of the
-    box they share, so the two never run along the same vertical.
+    It runs level with the bug-first path and lands on a different column of
+    the box they share, so the two never run along the same vertical.
     """
     if step < _STEP_REFUTATION:
         return
