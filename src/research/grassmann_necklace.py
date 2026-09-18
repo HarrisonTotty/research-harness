@@ -34,8 +34,9 @@ from research._cyclic import (
     necklace_masks,
 )
 from research._plot import ensure_axes, scatter_labeled
+from research.decorated_permutation import DecoratedPermutation
 from research.matroid import Matroid
-from research.positroid import DecoratedPermutation, Positroid
+from research.positroid import Positroid
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
@@ -67,7 +68,7 @@ class GrassmannNecklace[T: Hashable]:
     value: equality and hashing compare the cyclic order and the entries.
 
     Convention dictionary (Grassmann Necklace page, convention warning):
-    :class:`research.positroid.DecoratedPermutation` views use this
+    :class:`research.decorated_permutation.DecoratedPermutation` views use this
     library's stored Ardila-Rincon-Williams direction — the inverse of
     Postnikov's permutation — with coloops as clockwise fixed points;
     bounded affine permutation windows, siteswaps, and juggling states use

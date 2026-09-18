@@ -20,6 +20,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from experiments import io
+from research import decorated_permutation as dp
 from research import grassmann_necklace as gn
 from research import matroid as mt
 from research import positroid as ps
@@ -30,14 +31,14 @@ matplotlib.use("Agg")
 # --------------------------------------------------------------------------- #
 # Strategies: necklaces through the decorated-permutation bijection
 # --------------------------------------------------------------------------- #
-def _draw_decorated_permutation(draw: st.DrawFn, n: int) -> ps.DecoratedPermutation:
+def _draw_decorated_permutation(draw: st.DrawFn, n: int) -> dp.DecoratedPermutation:
     labels = tuple(range(1, n + 1))
     targets = tuple(draw(st.permutations(labels))) if n else ()
     fixed = [i for i in labels if targets[i - 1] == i]
     clockwise = (
         frozenset(draw(st.sets(st.sampled_from(fixed)))) if fixed else frozenset()
     )
-    return ps.DecoratedPermutation(targets, clockwise)
+    return dp.DecoratedPermutation(targets, clockwise)
 
 
 @st.composite
@@ -223,7 +224,7 @@ class TestConstructorValidation:
             gn.GrassmannNecklace.from_entries((1, 2), [{3}, {3}])
 
     def test_decorated_permutation_size_mismatch_is_rejected(self):
-        decorated = ps.DecoratedPermutation((2, 1))
+        decorated = dp.DecoratedPermutation((2, 1))
         with pytest.raises(ValueError, match="ground set has"):
             gn.GrassmannNecklace.from_decorated_permutation((1, 2, 3), decorated)
 
@@ -300,7 +301,7 @@ class TestStructuralTheorems:
             fixed = [i for i in range(1, n + 1) if targets[i - 1] == i]
             for count in range(len(fixed) + 1):
                 for clockwise in itertools.combinations(fixed, count):
-                    decorated = ps.DecoratedPermutation(targets, frozenset(clockwise))
+                    decorated = dp.DecoratedPermutation(targets, frozenset(clockwise))
                     candidates.append(
                         ps.Positroid.from_decorated_permutation(
                             elements, decorated, validate=False

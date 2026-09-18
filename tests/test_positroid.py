@@ -21,6 +21,7 @@ from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
 from experiments import io
+from research import decorated_permutation as dp
 from research import matroid as mt
 from research import positroid as ps
 
@@ -30,14 +31,14 @@ matplotlib.use("Agg")
 # --------------------------------------------------------------------------- #
 # Strategies: positroids through the decorated-permutation bijection
 # --------------------------------------------------------------------------- #
-def _draw_decorated_permutation(draw: st.DrawFn, n: int) -> ps.DecoratedPermutation:
+def _draw_decorated_permutation(draw: st.DrawFn, n: int) -> dp.DecoratedPermutation:
     labels = tuple(range(1, n + 1))
     targets = tuple(draw(st.permutations(labels))) if n else ()
     fixed = [i for i in labels if targets[i - 1] == i]
     clockwise = (
         frozenset(draw(st.sets(st.sampled_from(fixed)))) if fixed else frozenset()
     )
-    return ps.DecoratedPermutation(targets, clockwise)
+    return dp.DecoratedPermutation(targets, clockwise)
 
 
 def _positroid_on(draw: st.DrawFn, elements: tuple[int, ...]) -> ps.Positroid[int]:
@@ -137,7 +138,7 @@ class TestCanonicalExamples:
     def test_empty_positroid_round_trips_through_every_view(self):
         p = ps.uniform_positroid(0, 0)
         assert p.grassmann_necklace == ()
-        assert p.to_decorated_permutation() == ps.DecoratedPermutation(())
+        assert p.to_decorated_permutation() == dp.DecoratedPermutation(())
         assert ps.Positroid.from_dataframe(p.to_dataframe()) == p
 
 
@@ -180,14 +181,14 @@ class TestConstructorValidation:
 
     def test_non_bijective_decorated_permutation_is_rejected(self):
         with pytest.raises(ValueError, match="bijection"):
-            ps.DecoratedPermutation((1, 1))
+            dp.DecoratedPermutation((1, 1))
 
     def test_decorating_a_non_fixed_point_is_rejected(self):
         with pytest.raises(ValueError, match="not fixed"):
-            ps.DecoratedPermutation((2, 1), frozenset({1}))
+            dp.DecoratedPermutation((2, 1), frozenset({1}))
 
     def test_decorated_permutation_size_mismatch_is_rejected(self):
-        decorated = ps.DecoratedPermutation((2, 1))
+        decorated = dp.DecoratedPermutation((2, 1))
         with pytest.raises(ValueError, match="ground set has"):
             ps.Positroid.from_decorated_permutation((1, 2, 3), decorated)
 
@@ -472,7 +473,7 @@ class TestEnumeration:
         sif = [
             targets
             for targets in itertools.permutations((1, 2, 3))
-            if ps.DecoratedPermutation(targets).is_stabilized_interval_free
+            if dp.DecoratedPermutation(targets).is_stabilized_interval_free
         ]
         assert sif == [(2, 3, 1), (3, 1, 2)]
 

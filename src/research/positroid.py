@@ -46,109 +46,19 @@ from research._cyclic import (
 from research._graph import UnionFind
 from research._linalg import det_q
 from research._plot import ensure_axes, scatter_labeled, unit_circle
+from research.decorated_permutation import DecoratedPermutation
 from research.matroid import Matroid
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
 __all__ = [
-    "DecoratedPermutation",
     "Positroid",
     "enumerate_positroids",
     "is_positroid",
     "shifted_schubert_positroid",
     "uniform_positroid",
 ]
-
-
-# --------------------------------------------------------------------------- #
-# Decorated permutations
-# --------------------------------------------------------------------------- #
-@dataclass(frozen=True)
-class DecoratedPermutation:
-    """A bijection of ``[n]`` whose fixed points are each colored.
-
-    ``targets[i - 1]`` is the image of position ``i`` in ``1..n``; fixed
-    points in ``clockwise_fixed`` are colored clockwise and the remaining
-    fixed points counterclockwise (Positroid page, decorated permutation
-    block). Under the bijection with positroids, coloops correspond to
-    clockwise fixed points and loops to counterclockwise ones — the page
-    notes which color counts toward the rank varies by source; this library
-    fixes coloop = clockwise.
-
-    Raises:
-        ValueError: If ``targets`` is not a bijection of ``[n]`` or a
-            decorated position is not a fixed point.
-    """
-
-    targets: tuple[int, ...]
-    clockwise_fixed: frozenset[int] = frozenset()
-
-    def __post_init__(self) -> None:
-        """Validate the definition (both checks are linear-time)."""
-        n = len(self.targets)
-        if sorted(self.targets) != list(range(1, n + 1)):
-            msg = (
-                f"a decorated permutation must be a bijection of [n] "
-                f"(Positroid page, decorated permutation block); got "
-                f"targets {self.targets!r}"
-            )
-            raise ValueError(msg)
-        stray = self.clockwise_fixed - self.fixed_points
-        if stray:
-            msg = (
-                f"only fixed points carry a decoration, but positions "
-                f"{sorted(stray)!r} are not fixed by {self.targets!r}"
-            )
-            raise ValueError(msg)
-
-    @functools.cached_property
-    def fixed_points(self) -> frozenset[int]:
-        """The positions ``i`` with ``pi(i) = i``."""
-        return frozenset(
-            i for i, target in enumerate(self.targets, start=1) if target == i
-        )
-
-    @property
-    def counterclockwise_fixed(self) -> frozenset[int]:
-        """The fixed points not colored clockwise (loops, here)."""
-        return self.fixed_points - self.clockwise_fixed
-
-    @property
-    def weak_excedances(self) -> frozenset[int]:
-        """Positions with ``pi(i) > i``, plus the clockwise fixed points.
-
-        Rank-``d`` positroids correspond to decorated permutations with
-        exactly ``d`` weak excedances — positions ``i`` with ``pi(i) > i``
-        together with fixed points of one designated color (Positroid page);
-        the designated color is clockwise under this library's convention.
-        """
-        strict = frozenset(
-            i for i, target in enumerate(self.targets, start=1) if target > i
-        )
-        return strict | self.clockwise_fixed
-
-    @property
-    def weak_excedance_count(self) -> int:
-        """The number of weak excedances — the rank of the positroid."""
-        return len(self.weak_excedances)
-
-    @property
-    def is_stabilized_interval_free(self) -> bool:
-        """Whether ``pi(I) != I`` for every proper interval ``I`` of ``[n]``.
-
-        Connected positroids correspond to stabilized-interval-free
-        permutations (Ardila-Rincon-Williams Thms. 10.6-10.7; OEIS A075834).
-        Quadratic in ``n``.
-        """
-        n = len(self.targets)
-        for a in range(1, n + 1):
-            for b in range(a, n + 1):
-                if b - a + 1 == n:
-                    continue
-                if set(self.targets[a - 1 : b]) == set(range(a, b + 1)):
-                    return False
-        return True
 
 
 # --------------------------------------------------------------------------- #
