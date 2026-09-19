@@ -605,6 +605,70 @@ class PlabicGraph[V: Hashable]:
             tuple(range(1, 2 * n + 1)), edges, rotations, colors
         )
 
+    @classmethod
+    def from_bridge_decomposition(
+        cls, decorated: DecoratedPermutation
+    ) -> PlabicGraph[Hashable]:
+        """Return the bridge graph of a decorated permutation — a reduced graph.
+
+        The BCFW-bridge construction (Arkani-Hamed-Bourjaily-Cachazo-
+        Goncharov-Postnikov-Trnka, *Scattering Amplitudes and the Positive
+        Grassmannian*, arXiv:1212.5605; Fomin-Williams-Zelevinsky section
+        7.10): the affinization of ``decorated`` is sorted to a decorated
+        identity by the transpositions of :func:`_bridge_sequence`, and the
+        graph hangs one column below each boundary vertex, attaching for
+        the ``m``-th transposition ``(i, j)`` a white vertex ``(m, -1)`` at
+        the foot of column ``i`` and a black vertex ``(m, 1)`` at the foot
+        of column ``j``, joined by a bridge. The lowest vertex of a column
+        keeps degree 2 (no (M3) removal is applied), a column never touched
+        — a fixed point — gets a lollipop ``(i, "lollipop")`` of its
+        decoration's color, and the trip permutation of the result is
+        ``decorated`` itself, in Postnikov's direction.
+
+        This is a second canonical representative per cell, generally not
+        isomorphic to the Le-graph of :meth:`from_le_diagram`. Reducedness
+        and the trip permutation are checked exhaustively for small ``n``
+        in the tests rather than re-derived here.
+
+        Raises:
+            ValueError: If ``decorated`` has size 0 (no boundary to embed).
+        """
+        n = decorated.size
+        if n == 0:
+            msg = "a bridge graph needs at least one boundary vertex; got n = 0"
+            raise ValueError(msg)
+        edges: list[tuple[Hashable, Hashable]] = []
+        foot: dict[int, Hashable] = {i: i for i in range(1, n + 1)}
+        above: dict[Hashable, int] = {}
+        below: dict[Hashable, int] = {}
+        bridge: dict[Hashable, int] = {}
+        colors: dict[Hashable, int] = {}
+        for index, columns in enumerate(_bridge_sequence(decorated)):
+            pair = [(index, WHITE), (index, BLACK)]
+            for column, v in zip(columns, pair, strict=True):
+                above[v] = below[foot[column]] = len(edges)
+                edges.append((foot[column], v))
+                foot[column] = v
+                colors[v] = v[1]
+            bridge[pair[0]] = bridge[pair[1]] = len(edges)
+            edges.append((pair[0], pair[1]))
+        rotations: dict[Hashable, list[int]] = {}
+        for vertex, color in colors.items():
+            down = [below[vertex]] if vertex in below else []
+            rotations[vertex] = (
+                [above[vertex], *down, bridge[vertex]]
+                if color == WHITE
+                else [above[vertex], bridge[vertex], *down]
+            )
+        for i in sorted(decorated.fixed_points):
+            head = (i, "lollipop")
+            rotations[head] = [len(edges)]
+            edges.append((i, head))
+            colors[head] = WHITE if i in decorated.clockwise_fixed else BLACK
+        return PlabicGraph.from_rotation_system(
+            tuple(range(1, n + 1)), edges, rotations, colors
+        )
+
     # ------------------------------------------------------------ validation
     def _validate(self) -> None:
         """Check the definition; raise ``ValueError`` naming the axiom."""
@@ -2065,6 +2129,42 @@ def _geometric_rotations[V: Hashable](
         incident[u].append((2 * index, positions[w]))
         incident[w].append((2 * index + 1, positions[u]))
     return {v: _sorted_ccw(positions[v], darts) for v, darts in incident.items()}
+
+
+def _bridge_sequence(decorated: DecoratedPermutation) -> list[tuple[int, int]]:
+    """Return the bridges ``(i, j)``, ``i < j``, sorting the affinization.
+
+    Fomin-Williams-Zelevinsky section 7.10, after Arkani-Hamed et al.
+    (arXiv:1212.5605): a bridge is a pair of positions ``i < j`` with
+    ``f(i) < f(j)``, neither fixed modulo ``n``, and every position strictly
+    between them fixed modulo ``n``; swapping ``f(i)`` and ``f(j)`` moves the
+    bounded affine permutation ``f`` towards a decorated identity. Which
+    available bridge is taken is a **choice**, and the graph of
+    :meth:`PlabicGraph.from_bridge_decomposition` depends on it. The order
+    here is a sweep rather than the sources' restart-at-the-first-pair rule:
+    repeated passes over the pairs by increasing ``j - i``, then increasing
+    ``i``, taking every available bridge met along the way.
+    """
+    window = list(decorated.to_bounded_affine_permutation())
+    n = len(window)
+
+    def fixed(position: int) -> bool:
+        return (window[position] - position - 1) % n == 0
+
+    bridges: list[tuple[int, int]] = []
+    while not all(fixed(position) for position in range(n)):
+        for gap in range(1, n):
+            for i in range(n - gap):
+                j = i + gap
+                if (
+                    window[i] < window[j]
+                    and not fixed(i)
+                    and not fixed(j)
+                    and all(fixed(between) for between in range(i + 1, j))
+                ):
+                    window[i], window[j] = window[j], window[i]
+                    bridges.append((i + 1, j + 1))
+    return bridges
 
 
 def _split_crossing(draft: _Draft, v: Hashable) -> None:

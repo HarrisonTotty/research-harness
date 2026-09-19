@@ -743,6 +743,63 @@ class TestCountsForKThree:
         assert {graph.face_count for graph in classes} == {3 * (n - 3) + 1}
 
 
+class TestBridgeDecomposition:
+    """``from_bridge_decomposition``: FWZ section 7.10, after arXiv:1212.5605.
+
+    Not a Logseq-page transcription: the constructor was ported from the
+    predecessor repository for :mod:`research.strand_dynamics`, and is
+    pinned by the theorem the sources prove about it — the bridge graph is
+    reduced with the prescribed decorated trip permutation — plus one
+    hand-computed fixture for the sweep order.
+    """
+
+    @pytest.mark.parametrize("n", [1, 2, 3, 4, 5])
+    def test_every_bridge_graph_is_reduced_with_the_prescribed_trips(self, n):
+        for decorated in dp.enumerate_decorated_permutations(n):
+            graph = Graph.from_bridge_decomposition(decorated)
+            assert graph.to_decorated_permutation() == decorated
+            assert graph.is_reduced() is True
+            assert graph.face_count - 1 == decorated.dimension
+
+    def test_the_sweep_takes_every_available_bridge_in_one_pass(self):
+        """Gr(2,4) top cell, by hand: f = 3456 sorts by (1,2), (2,3), (2,4), (1,4).
+
+        After (1,2) and (2,3) the window is 4536 and position 3 is fixed, so
+        (3,4) is unavailable; the same pass goes on to the gap-2 bridge
+        (2,4) across it and the gap-3 bridge (1,4), ending at 5634.
+        """
+        graph = Graph.from_bridge_decomposition(dp.top_cell(2, 4))
+        assert graph.edges == (
+            (1, (0, WHITE)),
+            (2, (0, BLACK)),
+            ((0, WHITE), (0, BLACK)),
+            ((0, BLACK), (1, WHITE)),
+            (3, (1, BLACK)),
+            ((1, WHITE), (1, BLACK)),
+            ((1, WHITE), (2, WHITE)),
+            (4, (2, BLACK)),
+            ((2, WHITE), (2, BLACK)),
+            ((0, WHITE), (3, WHITE)),
+            ((2, BLACK), (3, BLACK)),
+            ((3, WHITE), (3, BLACK)),
+        )
+
+    def test_the_foot_of_a_column_keeps_degree_two(self):
+        graph = Graph.from_bridge_decomposition(dp.top_cell(2, 4))
+        feet = [(3, WHITE), (2, WHITE), (1, BLACK), (3, BLACK)]
+        assert [graph.degree(v) for v in feet] == [2, 2, 2, 2]
+        assert graph.degree((0, WHITE)) == 3
+
+    def test_fixed_points_become_lollipops_of_their_decoration(self):
+        decorated = dp.DecoratedPermutation((1, 3, 2, 4), frozenset({4}))
+        graph = Graph.from_bridge_decomposition(decorated)
+        assert graph.lollipops == {1: BLACK, 4: WHITE}
+
+    def test_the_empty_permutation_is_rejected(self):
+        with pytest.raises(ValueError, match="at least one boundary vertex"):
+            Graph.from_bridge_decomposition(dp.DecoratedPermutation(()))
+
+
 class TestNonReducedWiringDiagram:
     def test_the_graph_satisfies_every_axiom(self):
         graph = pg.nonreduced_wiring_example()
