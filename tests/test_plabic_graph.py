@@ -31,15 +31,30 @@ ones scrambled again by moves) — (R1) read backwards — so that
 Definition 12.5 / FWZ Definition 7.1.6 is an oracle independent of the trip
 criterion being tested.
 
+Plabic networks (``PlabicNetwork``: face weights with product 1, Postnikov
+Definition 11.5 continued) get their own classes at the end of the file:
+Lemma 11.2 (edge weights modulo gauge), Theorem 10.1 (orientation
+independence), Lemma 4.3 and Definition 4.6 (the boundary measurement map and its
+matrix, against the coordinate-embedded networks of
+research.boundary_measurement, whose signed path sums and dimer sums are an
+independent route to the same point), Theorem 12.7 and Corollary 16.5 with
+weights, the "if" half of Theorem 12.1 for the moves the page gives weight
+rules for ((M1) by (12.1), (M2), (M3), (R2)), and the matching formula
+through ``from_bipartite_edge_weights``.
+
 Not transcribed, because the structure they quantify over is not implemented
-(spec, transformation backlog): Lemma 13.6 in general (no reduction search —
-certified on the two reduction fixtures), Theorem 12.1 and the injectivity
-half of Theorem 12.7 (no weighted moves; the image half is tested through
-weighted Le-networks of research.boundary_measurement, and the weighted
-matching formula on its square network and on weighted Le-graphs, both with
-multi-term sums), Corollary 16.5 (no weighted non-reduced source), statement (1) of the
-cluster-structure theorem and the finite-type counts 16/42/128 (no
-cluster-algebra module), the weight formulas of (M1), (R3), and T-duality.
+or the page does not carry the rule (spec, backlog): Lemma 13.6 in general
+(no reduction search — certified on the two reduction fixtures), the "only
+if" half of Theorem 12.1 and its (R1) case (the page gives no face-weight
+rule for parallel edge reduction), surjectivity onto the cell in Theorem
+12.7 and Corollary 16.5 (no inverse of ``Meas``; non-injectivity off the
+reduced graphs is certified on the hollow digon and, as a parameter count,
+on the spliced non-reduced graphs), statement (1) of the cluster-structure
+theorem and the finite-type counts 16/42/128 (no cluster-algebra module),
+the edge-weight form of (M1) (the page quotes the formulas without the
+figure's edge labelling), the strand-diagram form of (12.1) in the "dual
+formulation" block (no alternating-strand-diagram class), (R3), and
+T-duality.
 """
 
 import functools
@@ -61,6 +76,7 @@ from research import boundary_measurement as bm
 from research import decorated_permutation as dp
 from research import plabic_graph as pg
 from research import positroid as ps
+from research._linalg import det_q
 
 matplotlib.use("Agg")
 
@@ -1876,6 +1892,1177 @@ class TestPlots:
 
     def test_plot_creates_axes_when_none_is_given(self):
         ax = pg.gr24_square_pair()[0].plot_graph()
+        try:
+            assert ax.get_aspect() == 1.0
+        finally:
+            plt.close("all")
+
+
+# --------------------------------------------------------------------------- #
+# Plabic networks — weights, moves with weights, the boundary measurement point
+# --------------------------------------------------------------------------- #
+Network = pg.PlabicNetwork
+type AnyNetwork = pg.PlabicNetwork[Hashable]
+
+_WEIGHT = st.fractions(min_value=Fraction(1, 9), max_value=9, max_denominator=9)
+
+
+def _weights(draw: st.DrawFn, count: int) -> list[Fraction]:
+    return draw(st.lists(_WEIGHT, min_size=count, max_size=count))
+
+
+@st.composite
+def networks(
+    draw: st.DrawFn, graphs: st.SearchStrategy[AnyGraph] | None = None
+) -> AnyNetwork:
+    """A graph from ``graphs`` (default: reduced) with random edge weights."""
+    graph = draw(reduced_graphs(max_n=5) if graphs is None else graphs)
+    return Network.from_edge_weights(graph, _weights(draw, len(graph.edges)))
+
+
+def _same_point[K: Hashable, L: Hashable](
+    first: Mapping[frozenset[K], Fraction], second: Mapping[frozenset[L], Fraction]
+) -> bool:
+    """Whether two Plucker vectors are equal projectively.
+
+    The keys are sets of boundary labels, whose static type differs between
+    the classes compared.
+    """
+    left: dict[frozenset[object], Fraction] = {
+        frozenset(k): v for k, v in first.items()
+    }
+    right: dict[frozenset[object], Fraction] = {
+        frozenset(k): v for k, v in second.items()
+    }
+    if set(left) != set(right):
+        return False
+    pivot = next(iter(left))
+    return all(
+        left[basis] * right[pivot] == right[basis] * left[pivot] for basis in left
+    )
+
+
+def _minor(
+    matrix: Mapping[Hashable, tuple[Fraction, ...]],
+    boundary: Sequence[Hashable],
+    subset: Iterable[Hashable],
+) -> Fraction:
+    """The maximal minor in the columns ``subset``, taken in boundary order."""
+    chosen = [b for b in boundary if b in set(subset)]
+    return det_q([[matrix[b][r] for b in chosen] for r in range(len(chosen))])
+
+
+def _matching_sums(
+    graph: AnyGraph, weights: Sequence[Fraction]
+) -> dict[frozenset[Hashable], Fraction]:
+    """``sum_{dM = I} w(M)`` for every boundary ``I``, from the matchings."""
+    sums: dict[frozenset[Hashable], Fraction] = {}
+    for matching in graph.almost_perfect_matchings():
+        term = math.prod((weights[index] for index in matching), start=Fraction(1))
+        key = graph.matching_boundary(matching)
+        sums[key] = sums.get(key, Fraction(0)) + term
+    return sums
+
+
+def _path_sum_measurements(
+    graph: AnyGraph, weights: Sequence[Fraction], orientation: Sequence[int]
+) -> dict[tuple[Hashable, Hashable], Fraction] | None:
+    """Boundary measurements of an acyclic perfect orientation, by path sums.
+
+    An oracle that uses nothing of ``PlabicNetwork``. ``weights`` are edge
+    weights relative to the stored orientation (edge ``e`` from
+    ``edges[e][0]``); they are inverted here on the edges ``orientation``
+    reverses (the page's Theorem 10.1 rule). ``M_ij`` is then the sum over
+    directed paths from ``b_i`` to ``b_j`` of the product of the edge
+    weights (the page's boundary measurement map; in an acyclic planar
+    network no path meets itself, so every winding sign is +1). Returns
+    ``None`` when the orientation has a directed cycle.
+    """
+    x = [
+        w if tail & 1 == 0 else 1 / w
+        for w, tail in zip(weights, sorted(orientation), strict=True)
+    ]
+    out: dict[Hashable, list[tuple[Hashable, Fraction]]] = {}
+    for tail in orientation:
+        u, w = graph.edges[tail >> 1][tail & 1], graph.edges[tail >> 1][1 - (tail & 1)]
+        out.setdefault(u, []).append((w, x[tail >> 1]))
+    memo: dict[Hashable, dict[Hashable, Fraction]] = {}
+    active: set[Hashable] = set()
+
+    def sums_from(v: Hashable) -> dict[Hashable, Fraction] | None:
+        if v in memo:
+            return memo[v]
+        if v in active:
+            return None
+        active.add(v)
+        totals: dict[Hashable, Fraction] = {v: Fraction(1)}
+        for head, weight in out.get(v, []):
+            onward = sums_from(head)
+            if onward is None:
+                return None
+            for target, value in onward.items():
+                totals[target] = totals.get(target, Fraction(0)) + weight * value
+        active.discard(v)
+        memo[v] = totals
+        return totals
+
+    sources = graph.source_set(orientation)
+    measurements: dict[tuple[Hashable, Hashable], Fraction] = {}
+    for i in graph.boundary:
+        if i not in sources:
+            continue
+        reach = sums_from(i)
+        if reach is None:
+            return None
+        for j in graph.boundary:
+            if j not in sources:
+                measurements[(i, j)] = reach.get(j, Fraction(0))
+    if any(sums_from(v) is None for v in graph.internal_vertices):
+        return None
+    return measurements
+
+
+def _weights_by_corners(
+    network: AnyNetwork,
+    *,
+    rename: Mapping[Hashable, Hashable] | None = None,
+    drop: Hashable | None = None,
+    skip: int | None = None,
+    anonymous: bool = False,
+) -> dict[str, list[Fraction]]:
+    """Group the face weights by a numbering-free signature of each face.
+
+    Going clockwise around a face, each side contributes the vertex it
+    leaves and the signature of the face across it; the signature is that
+    ring up to rotation, refined four times starting from the vertices
+    alone. To compare across a move, vertices are renamed (a vertex merged
+    by (M2)), the sides leaving ``drop`` (a middle vertex of (M3)) are left
+    out — the side entering it stands for the whole subdivided edge — and
+    so are the two sides of edge ``skip`` (the edge (M2) contracts or
+    creates). Loops and parallel edges stay in the ring, so the ordered
+    ring tells apart even the digons and monogons of a multiple edge; faces
+    that still share a signature are compared as a sorted list. With
+    ``anonymous`` an internal vertex is named by its color alone, which
+    compares two graphs that differ only in their internal labels.
+    """
+    graph = network.graph
+    rename = rename or {}
+
+    def ident(v: Hashable) -> Hashable:
+        return rename.get(v, v)
+
+    def name(v: Hashable) -> str:
+        if anonymous and v not in graph.boundary:
+            return f"color {graph.color(v)}"
+        return repr(ident(v))
+
+    face_of = {d: f for f, darts in enumerate(graph.faces()) for d in darts}
+    sides = [
+        [
+            (name(graph.edges[d >> 1][d & 1]), face_of[d ^ 1])
+            for d in darts
+            if graph.edges[d >> 1][d & 1] != drop and d >> 1 != skip
+        ]
+        for darts in graph.faces()
+    ]
+    keys = [""] * len(sides)
+    for _ in range(4):
+        rings = [
+            [f"{vertex}:{keys[across]}" for vertex, across in ring] for ring in sides
+        ]
+        keys = [
+            min((repr(ring[k:] + ring[:k]) for k in range(len(ring))), default="")
+            for ring in rings
+        ]
+    grouped: dict[str, list[Fraction]] = {}
+    for key, weight in zip(keys, network.face_weights, strict=True):
+        grouped.setdefault(key, []).append(weight)
+    return {key: sorted(weights) for key, weights in grouped.items()}
+
+
+def _normalized_stepwise(network: AnyNetwork) -> AnyNetwork:
+    """Exhaust (M2) contractions and (M3) removals through the single moves."""
+    while True:
+        graph = network.graph
+        internal = set(graph.internal_vertices)
+        unicolored = [
+            index
+            for index, (u, w) in enumerate(graph.edges)
+            if u != w and {u, w} <= internal and graph.color(u) == graph.color(w)
+        ]
+        middles = [
+            v
+            for v in graph.internal_vertices
+            if graph.degree(v) == 2
+            and len({d >> 1 for d in dict(graph.rotations)[v]}) == 2
+        ]
+        if unicolored:
+            network = network.contract_edge(unicolored[-1])
+        elif middles:
+            network = network.remove_middle_vertex(middles[-1])
+        else:
+            return network
+
+
+def _faces_by_label(network: AnyNetwork) -> dict[frozenset[Hashable], Fraction]:
+    """Key the face weights of a reduced network by the target face labels.
+
+    Faces of a reduced graph have distinct labels, and the moves (M2), (M3)
+    and boundary rotations fix every label (the page's Oh-Postnikov-Speyer
+    block), so this identifies a face before and after such a move.
+    """
+    labels = network.graph.face_labels()
+    assert len(set(labels)) == len(labels)
+    return dict(zip(labels, network.face_weights, strict=True))
+
+
+def _double_sided_square() -> AnyGraph:
+    """The Gr(2,4) square with ``b_4`` replaced by a black leaf ``l``.
+
+    The face holding the leaf touches the square along two sides, ``L-T``
+    and ``B-L``.
+    """
+    return _graph(
+        (1, 2, 3),
+        [
+            (1, "T"),
+            (2, "R"),
+            (3, "B"),
+            ("l", "L"),
+            ("L", "T"),
+            ("T", "R"),
+            ("R", "B"),
+            ("B", "L"),
+        ],
+        {"T": [0, 4, 5], "R": [1, 5, 6], "B": [6, 7, 2], "L": [4, 3, 7], "l": [3]},
+        {"T": BLACK, "R": WHITE, "B": BLACK, "L": WHITE, "l": BLACK},
+    )
+
+
+def _square_move_ratios(
+    network: AnyNetwork, face: int
+) -> tuple[dict[int, Fraction], dict[int, Fraction]]:
+    """The two neighbor-weight ratios (12.1) allows, keyed by neighbor face.
+
+    Going around the square, the sides alternate between the factor
+    ``1 / (1 + 1/y0)`` and the factor ``1 + y0`` (the page's ``y1, y3``
+    against ``y2, y4``); the page does not say which side starts, so both
+    alternations are returned. A face across several sides collects the
+    product of their factors.
+    """
+    graph = network.graph
+    y0 = network.face_weights[face]
+    factors = (1 / (1 + 1 / y0), 1 + y0)
+    face_of = {d: f for f, darts in enumerate(graph.faces()) for d in darts}
+    patterns: list[dict[int, Fraction]] = []
+    for start in (0, 1):
+        ratios: dict[int, Fraction] = {}
+        for side, dart in enumerate(graph.faces()[face]):
+            across = face_of[dart ^ 1]
+            ratios[across] = (
+                ratios.get(across, Fraction(1)) * factors[(side + start) % 2]
+            )
+        patterns.append(ratios)
+    return patterns[0], patterns[1]
+
+
+def _le_tableau(
+    data: st.DataObject, filling: Sequence[Sequence[int]]
+) -> dict[tuple[int, int], Fraction]:
+    return {
+        (i, j): data.draw(_WEIGHT)
+        for i, row in enumerate(filling, start=1)
+        for j, value in enumerate(row, start=1)
+        if value
+    }
+
+
+class TestPlabicNetworkDefinition:
+    """Postnikov Definition 11.5, continued: ``y_f > 0`` and ``prod y_f = 1``."""
+
+    def test_face_weights_with_product_one_are_accepted(self):
+        first, _ = pg.gr24_square_pair()
+        network = Network.from_face_weights(first, [2, 3, 5, 7, Fraction(1, 210)])
+        assert network.graph == first
+        assert network.face_weights == tuple(
+            Fraction(y) for y in (2, 3, 5, 7, Fraction(1, 210))
+        )
+
+    @pytest.mark.parametrize("bad", [0, -7])
+    def test_nonpositive_face_weight_is_rejected(self, bad):
+        first, _ = pg.gr24_square_pair()
+        with pytest.raises(ValueError, match=r"Definition 11\.5 violated \(y_f > 0\)"):
+            Network.from_face_weights(first, [2, 3, 5, bad, 1])
+
+    def test_every_face_needs_a_weight(self):
+        first, _ = pg.gr24_square_pair()
+        with pytest.raises(ValueError, match=r"Definition 11\.5 violated \(y_f > 0\)"):
+            Network.from_face_weights(first, [1, 1, 1, 1])
+
+    def test_face_weights_not_multiplying_to_one_are_rejected(self):
+        first, _ = pg.gr24_square_pair()
+        with pytest.raises(
+            ValueError, match=r"Definition 11\.5 violated \(prod y_f = 1\)"
+        ):
+            Network.from_face_weights(first, [2, 3, 5, 7, 1])
+
+    @pytest.mark.parametrize("bad", [0, Fraction(-1, 2)])
+    def test_edge_weights_must_be_strictly_positive(self, bad):
+        graph = pg.hollow_digon()
+        with pytest.raises(ValueError, match=r"Lemma 11\.2.*strictly positive"):
+            Network.from_edge_weights(graph, [1, 1, bad, 1])
+
+    def test_every_edge_needs_a_weight(self):
+        with pytest.raises(ValueError, match=r"Lemma 11\.2.*one per edge"):
+            Network.from_edge_weights(pg.hollow_digon(), [1, 1, 1])
+
+    @pytest.mark.parametrize("orientation", [[0, 2, 4], [0, 1, 4, 6], [0, 2, 4, 8]])
+    def test_orientation_must_list_one_tail_dart_per_edge(self, orientation):
+        with pytest.raises(ValueError, match="one tail dart per edge"):
+            Network.from_edge_weights(pg.hollow_digon(), [1, 1, 1, 1], orientation)
+
+    def test_bipartite_edge_weights_need_a_bipartite_graph(self):
+        first, _ = pg.gr24_square_pair()
+        unicolored = first.insert_middle_vertex(4, BLACK, "m")
+        with pytest.raises(ValueError, match="bipartite"):
+            Network.from_bipartite_edge_weights(unicolored, [1] * len(unicolored.edges))
+
+
+class TestEdgeWeightsModuloGauge:
+    """Postnikov Lemma 11.2: ``R_{>0}^E / gauge = R_{>0}^{F-1}``."""
+
+    @given(networks(leafless_graphs()), st.data())
+    @settings(max_examples=100, deadline=None)
+    def test_gauge_transformations_do_not_change_the_network(self, network, data):
+        """Rescale at internal vertices: ``x_e -> x_e t_u / t_v`` for ``e = (u, v)``."""
+        graph = network.graph
+        x = network.edge_weights()
+        scalar = {v: data.draw(_WEIGHT) for v in graph.internal_vertices}
+        gauged = [
+            w * scalar.get(u, Fraction(1)) / scalar.get(v, Fraction(1))
+            for w, (u, v) in zip(x, graph.edges, strict=True)
+        ]
+        assert Network.from_edge_weights(graph, gauged) == network
+
+    @given(leafless_graphs(), st.data())
+    @settings(max_examples=100, deadline=None)
+    def test_edge_weights_with_equal_face_weights_are_gauge_equivalent(
+        self, graph, data
+    ):
+        """The converse half, on two genuinely different weightings.
+
+        ``first`` is random, ``second`` is the spanning-tree lift of its face
+        weights; the gauge is solved from the boundary (where it is 1)
+        inwards and then checked on every edge.
+        """
+        first = _weights(data.draw, len(graph.edges))
+        network = Network.from_edge_weights(graph, first)
+        second = network.edge_weights()
+        scalar: dict[Hashable, Fraction] = dict.fromkeys(graph.boundary, Fraction(1))
+        frontier = list(graph.boundary)
+        while frontier:
+            at = frontier.pop()
+            for index, (u, v) in enumerate(graph.edges):
+                if u == at and v not in scalar:
+                    scalar[v] = scalar[u] * first[index] / second[index]
+                    frontier.append(v)
+                elif v == at and u not in scalar:
+                    scalar[u] = scalar[v] * second[index] / first[index]
+                    frontier.append(u)
+        assert [
+            w * scalar[u] / scalar[v]
+            for w, (u, v) in zip(first, graph.edges, strict=True)
+        ] == list(second)
+
+    @given(reduced_graphs(max_n=5), st.data())
+    @settings(max_examples=100, deadline=None)
+    def test_every_face_weighting_comes_from_edge_weights(self, graph, data):
+        free = _weights(data.draw, graph.face_count - 1)
+        faces = [*free, 1 / math.prod(free, start=Fraction(1))]
+        network = Network.from_face_weights(graph, faces)
+        lifted = network.edge_weights()
+        assert all(w > 0 for w in lifted)
+        assert Network.from_edge_weights(graph, lifted).face_weights == tuple(faces)
+
+    @given(leafless_graphs())
+    @settings(max_examples=100, deadline=None)
+    def test_parameter_count_is_edges_minus_internal_vertices(self, graph):
+        assume(graph.size)
+        assert len(graph.edges) - len(graph.internal_vertices) == graph.face_count - 1
+
+
+class TestOrientationIndependence:
+    """Postnikov Theorem 10.1: reverse edges, invert their weights, same point."""
+
+    @given(networks(), st.data())
+    @settings(max_examples=100, deadline=None)
+    def test_reversing_edges_while_inverting_weights_gives_the_same_network(
+        self, network, data
+    ):
+        """The constructor law that lets the class forget the orientation.
+
+        It holds edge by edge in ``from_edge_weights``; that the *point* is
+        unchanged is checked against path sums in the next test.
+        """
+        graph = network.graph
+        orientations = graph.perfect_orientations()
+        first = data.draw(st.sampled_from(orientations))
+        second = data.draw(st.sampled_from(orientations))
+        x = _weights(data.draw, len(graph.edges))
+        inverted = [
+            w if a == b else 1 / w for w, a, b in zip(x, first, second, strict=True)
+        ]
+        assert Network.from_edge_weights(
+            graph, inverted, second
+        ) == Network.from_edge_weights(graph, x, first)
+
+    @given(reduced_graphs(max_n=5), st.data())
+    @settings(max_examples=100, deadline=None)
+    def test_every_acyclic_perfect_orientation_measures_the_same_point(
+        self, graph, data
+    ):
+        """Path sums and the Definition 4.6 matrix, orientation by orientation.
+
+        Each acyclic perfect orientation, with the weights inverted on the
+        edges it reverses, gives a matrix by an oracle that never looks at
+        ``pluckers``; all of them must be the same point.
+        """
+        weights = _weights(data.draw, len(graph.edges))
+        network = Network.from_edge_weights(graph, weights)
+        position = {b: index for index, b in enumerate(graph.boundary, start=1)}
+        points = []
+        for orientation in graph.perfect_orientations():
+            measured = _path_sum_measurements(graph, weights, orientation)
+            if measured is None:
+                continue
+            sources = graph.source_set(orientation)
+            columns = bm.measurement_matrix(
+                [position[i] for i in sources],
+                graph.size,
+                {(position[i], position[j]): m for (i, j), m in measured.items()},
+            )
+            matrix = dict(zip(graph.boundary, columns, strict=True))
+            points.append(
+                {
+                    frozenset(subset): minor
+                    for subset in itertools.combinations(graph.boundary, len(sources))
+                    if (minor := _minor(matrix, graph.boundary, subset)) != 0
+                }
+            )
+        assume(points)
+        assert all(_same_point(point, network.pluckers()) for point in points)
+
+    @given(_WEIGHT, _WEIGHT, _WEIGHT, _WEIGHT)
+    @settings(max_examples=25, deadline=None)
+    def test_every_perfect_orientation_of_the_square_measures_the_same_point(
+        self, a, b, c, d
+    ):
+        """The oracle is the coordinate-embedded network's own measurement."""
+        square = bm.square_network(a, b, c, d)
+        plabic = Network.from_planar_bipartite_network(square).pluckers()
+        matchings = square.almost_perfect_matchings()
+        assert len(matchings) == 7
+        for matching in matchings:
+            oriented = square.to_perfect_orientation(matching)
+            measured = {
+                frozenset(pair): oriented.plucker(pair)
+                for pair in itertools.combinations((1, 2, 3, 4), 2)
+            }
+            assert _same_point(measured, plabic)
+            assert _same_point(Network.from_planar_network(oriented).pluckers(), plabic)
+
+
+class TestBoundaryMeasurementMap:
+    """The page's boundary measurement map block: Lemma 4.3, Definition 4.6.
+
+    The named networks are fixtures of research.boundary_measurement; the
+    sources quoted for them (Postnikov Example 4.5, Lam) are that module's
+    attributions, not citations of the page.
+    """
+
+    @given(_WEIGHT, _WEIGHT, _WEIGHT, _WEIGHT)
+    @settings(max_examples=50, deadline=None)
+    def test_cyclic_network_sums_to_a_subtraction_free_rational_expression(
+        self, x, y, z, t
+    ):
+        """Postnikov Example 4.5: ``M_12 = xyt / (1 + yz)``."""
+        network = Network.from_planar_network(bm.geometric_series_network(x, y, z, t))
+        assert network.boundary_measurement(1, 2, {1}) == x * y * t / (1 + y * z)
+
+    @given(_WEIGHT, _WEIGHT, _WEIGHT)
+    @settings(max_examples=50, deadline=None)
+    def test_acyclic_network_measures_its_path_sums(self, a, b, c):
+        """Lam section 2.3: the path matrix of the three-wire network."""
+        network = Network.from_planar_network(bm.acyclic_baseline_network(a, b, c))
+        expected = {
+            (1, "1'"): 1 + a * c,
+            (1, "2'"): a,
+            (1, "3'"): 0,
+            (2, "1'"): c,
+            (2, "2'"): 1,
+            (2, "3'"): 0,
+            (3, "1'"): b * c,
+            (3, "2'"): b,
+            (3, "3'"): 1,
+        }
+        assert network.boundary_measurements({1, 2, 3}) == expected
+
+    @given(st.data())
+    @settings(max_examples=60, deadline=None)
+    def test_weighted_le_graph_agrees_with_the_signed_path_sums(self, data):
+        """The oracle is ``PlanarNetwork``'s acyclic path sum and sign matrix."""
+        filling, n = data.draw(le_fillings(max_n=5))
+        tableau = _le_tableau(data, filling)
+        oriented = bm.PlanarNetwork.from_le_diagram(filling, n, tableau)
+        network = Network.from_le_diagram(filling, n, tableau)
+        sources = oriented.source_set
+        assert (
+            network.boundary_measurements(sources) == oriented.boundary_measurements()
+        )
+        assert network.to_matrix(sources) == oriented.to_matrix()
+
+    @given(leafless_graphs(), st.data())
+    @settings(max_examples=100, deadline=None)
+    def test_measurement_is_the_path_sum_of_an_acyclic_perfect_orientation(
+        self, graph, data
+    ):
+        """``M_ij`` of Definition 4.6 against the sum over directed paths."""
+        assume(graph.is_perfectly_orientable)
+        weights = _weights(data.draw, len(graph.edges))
+        network = Network.from_edge_weights(graph, weights)
+        measured = [
+            (graph.source_set(orientation), sums)
+            for orientation in graph.perfect_orientations()
+            if (sums := _path_sum_measurements(graph, weights, orientation)) is not None
+        ]
+        assume(measured)
+        for sources, sums in measured:
+            assert network.boundary_measurements(sources) == sums
+            for (i, j), value in sums.items():
+                assert network.boundary_measurement(i, j, sources) == value
+
+    @given(networks(leafless_graphs()), st.data())
+    @settings(max_examples=100, deadline=None)
+    def test_matrix_has_the_identity_in_the_source_columns(self, network, data):
+        assume(network.graph.is_perfectly_orientable)
+        base = data.draw(st.sampled_from(sorted(network.pluckers(), key=sorted)))
+        matrix = network.to_matrix(base)
+        sources = [b for b in network.graph.boundary if b in base]
+        assert list(matrix) == list(network.graph.boundary)
+        for row, source in enumerate(sources):
+            assert matrix[source] == tuple(
+                Fraction(int(r == row)) for r in range(len(sources))
+            )
+
+    @given(networks(leafless_graphs()), st.data())
+    @settings(max_examples=100, deadline=None)
+    def test_minors_of_the_matrix_are_the_plucker_coordinates(self, network, data):
+        assume(network.graph.is_perfectly_orientable)
+        graph = network.graph
+        base = data.draw(st.sampled_from(sorted(network.pluckers(), key=sorted)))
+        matrix = network.to_matrix(base)
+        scale = network.plucker(base)
+        for subset in itertools.combinations(graph.boundary, len(base)):
+            assert _minor(matrix, graph.boundary, subset) * scale == network.plucker(
+                subset
+            )
+
+    def test_default_source_set_is_the_lexicographically_minimal_basis(self):
+        network = Network.from_le_diagram([[1, 1], [1, 1]], 4)
+        assert network.plucker({1, 2}) == 1
+        assert network.to_matrix() == network.to_matrix({1, 2})
+
+    def test_source_set_must_be_a_basis(self):
+        network = Network.from_face_weights(pg.lollipop_graph([BLACK, WHITE]), [1])
+        with pytest.raises(ValueError, match="not the source set"):
+            network.to_matrix({1})
+
+    def test_measurement_is_indexed_by_a_source_and_a_sink(self):
+        network = Network.from_le_diagram([[1, 1], [1, 1]], 4)
+        with pytest.raises(ValueError, match="a source and a sink"):
+            network.boundary_measurement(3, 1, {1, 2})
+
+    def test_plucker_is_indexed_by_k_subsets(self):
+        network = Network.from_le_diagram([[1, 1], [1, 1]], 4)
+        with pytest.raises(ValueError, match="2-subsets"):
+            network.plucker({1, 2, 3})
+
+    def test_point_is_undefined_without_a_perfect_orientation(self):
+        graph = _graph(
+            (1,),
+            [(1, "v"), ("v", "x"), ("v", "y")],
+            {"v": [0, 1, 2], "x": [1], "y": [2]},
+            {"v": BLACK, "x": WHITE, "y": WHITE},
+        )
+        network = Network.from_edge_weights(graph, [1, 2, 3])
+        with pytest.raises(ValueError, match="not perfectly orientable"):
+            network.pluckers()
+
+
+class TestWeightedParameterization:
+    """Postnikov Theorem 12.7 and Corollary 16.5."""
+
+    @given(networks())
+    @settings(max_examples=100, deadline=None)
+    def test_reduced_network_lands_in_its_positroid_cell(self, network):
+        """The cell is read off the trips, independently of any orientation."""
+        cell = network.graph.to_positroid()
+        coordinates = network.pluckers()
+        assert set(coordinates) == set(cell.bases)
+        assert all(value > 0 for value in coordinates.values())
+        assert network.to_positroid() == cell
+
+    @given(reduced_graphs(max_n=5), st.data())
+    @settings(max_examples=100, deadline=None)
+    def test_distinct_face_weights_give_distinct_points_on_a_reduced_graph(
+        self, graph, data
+    ):
+        """The injective half of "parameterization", on pairs of samples."""
+        first = Network.from_edge_weights(graph, _weights(data.draw, len(graph.edges)))
+        second = Network.from_edge_weights(graph, _weights(data.draw, len(graph.edges)))
+        assume(first != second)
+        assert not _same_point(first.pluckers(), second.pluckers())
+
+    @given(networks(leafless_graphs()))
+    @settings(max_examples=100, deadline=None)
+    def test_any_perfectly_orientable_network_lands_in_the_cell_of_its_matroid(
+        self, network
+    ):
+        """Corollary 16.5, the inclusion half, reduced or not.
+
+        The support and positivity hold by construction of ``pluckers``;
+        the discriminating assertion is the last one, which reads the cell
+        off the rank pattern of the boundary measurement matrix.
+        """
+        assume(network.graph.is_perfectly_orientable)
+        matroid = network.graph.matroid()
+        coordinates = network.pluckers()
+        assert set(coordinates) == set(matroid.bases)
+        assert all(value > 0 for value in coordinates.values())
+        assert network.to_positroid() == matroid
+
+    @given(st.one_of(digon_graphs(), monogon_graphs(), triple_edge_graphs()))
+    @settings(max_examples=100, deadline=None)
+    def test_non_reduced_graph_has_the_wrong_number_of_parameters(self, graph):
+        """Corollary 16.5: only reduced graphs have "the right dimension"."""
+        assume(graph.is_perfectly_orientable)
+        assert graph.face_count - 1 != bm.cell_dimension(graph.matroid())
+
+    def test_non_reduced_graph_does_not_parameterize_bijectively(self):
+        """The hollow digon: two free weights, a one-dimensional cell."""
+        graph = pg.hollow_digon()
+        first = Network.from_face_weights(graph, [1, 2, Fraction(1, 2)])
+        second = Network.from_face_weights(graph, [Fraction(1, 2), 1, 2])
+        assert graph.face_count - 1 == 2
+        assert bm.cell_dimension(graph.matroid()) == 1
+        assert first != second
+        assert first.pluckers() == second.pluckers()
+
+
+class TestFibersOfTheMeasurementMap:
+    """Postnikov Theorem 12.1, the "if" half, for the weighted moves of the page.
+
+    (M1) with the face-weight rule (12.1), (M2) and (M3) with face weights
+    unchanged, (R2) with merged faces multiplying their weights.
+    """
+
+    def test_square_move_transforms_the_face_weights_by_12_1(self):
+        """The page's (12.1), the faces around the square named cyclically.
+
+        The boundary faces come in the order ``y2, y3, y4, y1`` of the page's
+        numbering (which neighbor is ``y1`` is pinned by Theorem 12.1).
+        """
+        first, second = pg.gr24_square_pair()
+        y2, y3, y4, y1, y0 = 2, 3, 5, 7, Fraction(1, 210)
+        moved = Network.from_face_weights(first, [y2, y3, y4, y1, y0]).square_move(4)
+        assert moved.graph == second
+        assert moved.face_weights == (
+            y2 * (1 + y0),
+            y3 / (1 + 1 / y0),
+            y4 * (1 + y0),
+            y1 / (1 + 1 / y0),
+            1 / y0,
+        )
+
+    @given(st.data())
+    @settings(max_examples=100, deadline=None)
+    def test_square_move_preserves_the_point(self, data):
+        graph, face = data.draw(squared_graphs())
+        network = Network.from_edge_weights(
+            graph, _weights(data.draw, len(graph.edges))
+        )
+        assume(graph.is_perfectly_orientable)
+        moved = network.square_move(face)
+        assert moved.face_weights[face] == 1 / network.face_weights[face]
+        assert moved.pluckers() == network.pluckers()
+
+    @given(st.data())
+    @settings(max_examples=100, deadline=None)
+    def test_square_move_transforms_every_face_weight_by_12_1(self, data):
+        """Face by face: ``y0`` inverts, the sides alternate, the rest stay."""
+        graph, face = data.draw(squared_graphs())
+        network = Network.from_edge_weights(
+            graph, _weights(data.draw, len(graph.edges))
+        )
+        moved = network.square_move(face)
+        expected = [
+            {
+                index: 1 / y if index == face else y * ratios.get(index, Fraction(1))
+                for index, y in enumerate(network.face_weights)
+            }
+            for ratios in _square_move_ratios(network, face)
+        ]
+        assert dict(enumerate(moved.face_weights)) in expected
+
+    @given(st.data())
+    @settings(max_examples=50, deadline=None)
+    def test_square_move_next_to_a_face_touching_two_sides(self, data):
+        """A face across two sides of the square collects both factors."""
+        graph = _double_sided_square()
+        face = _face_on(graph, ["T", "R", "B", "L"])
+        network = Network.from_edge_weights(
+            graph, _weights(data.draw, len(graph.edges))
+        )
+        y0 = network.face_weights[face]
+        moved = network.square_move(face)
+        ratios = [
+            new / old
+            for new, old in zip(moved.face_weights, network.face_weights, strict=True)
+        ]
+        (two_sided,) = [
+            index
+            for index, darts in enumerate(graph.faces())
+            if any(graph.edges[d >> 1][d & 1] == "l" for d in darts)
+        ]
+        one_sided = [
+            ratio
+            for index, ratio in enumerate(ratios)
+            if index not in (face, two_sided)
+        ]
+        assert ratios[two_sided] == (1 + y0) / (1 + 1 / y0)
+        assert sorted(one_sided) == sorted([1 / (1 + 1 / y0), 1 + y0])
+        assert graph.graph_type == (1, 3)
+        assert moved.pluckers() == network.pluckers()
+
+    @given(st.data())
+    @settings(max_examples=50, deadline=None)
+    def test_square_move_is_an_involution_on_networks(self, data):
+        graph, face = data.draw(squared_graphs())
+        network = Network.from_edge_weights(
+            graph, _weights(data.draw, len(graph.edges))
+        )
+        assert network.square_move(face).square_move(face) == network
+
+    @given(networks(leafless_graphs()), st.data())
+    @settings(max_examples=100, deadline=None)
+    def test_contraction_keeps_the_face_weights_and_the_point(self, network, data):
+        graph = network.graph
+        unicolored = [
+            index
+            for index, (u, w) in enumerate(graph.edges)
+            if u != w
+            and u in graph.internal_vertices
+            and w in graph.internal_vertices
+            and graph.color(u) == graph.color(w)
+        ]
+        assume(unicolored and graph.is_perfectly_orientable)
+        edge = data.draw(st.sampled_from(unicolored))
+        kept, merged = graph.edges[edge]
+        moved = network.contract_edge(edge)
+        assert _weights_by_corners(moved) == _weights_by_corners(
+            network, rename={merged: kept}, skip=edge
+        )
+        assert moved.pluckers() == network.pluckers()
+
+    @pytest.mark.parametrize("edge", [1, 2, 3])
+    def test_contracting_one_of_three_parallel_edges_keeps_every_face_weight(
+        self, edge
+    ):
+        """The other two edges become loops; the faces they bound keep their weights.
+
+        Contracting the middle edge leaves two monogons, contracting an outer
+        one a monogon inside a digon of loops.
+
+        The graph has no perfect orientation (each black end would need two
+        outgoing edges), so only the face weights are compared.
+        """
+        graph = _graph(
+            (1, 2),
+            [(1, "a"), ("a", "b"), ("a", "b"), ("a", "b"), ("b", 2)],
+            {"a": [0, 3, 2, 1], "b": [4, 1, 2, 3]},
+            {"a": BLACK, "b": BLACK},
+        )
+        network = Network.from_face_weights(graph, [2, 3, 5, Fraction(1, 30)])
+        moved = network.contract_edge(edge)
+        signatures = _weights_by_corners(network, rename={"b": "a"}, skip=edge)
+        assert all(len(weights) == 1 for weights in signatures.values())
+        assert _weights_by_corners(moved) == signatures
+        assert moved.graph == graph.contract_edge(edge)
+
+    @given(networks(leafless_graphs()), st.data())
+    @settings(max_examples=100, deadline=None)
+    def test_uncontraction_keeps_the_face_weights_and_the_point(self, network, data):
+        graph = network.graph
+        big = [
+            v
+            for v in graph.internal_vertices
+            if graph.degree(v) >= 3
+            and len({d >> 1 for d in dict(graph.rotations)[v]}) == graph.degree(v)
+        ]
+        assume(big and graph.is_perfectly_orientable)
+        v = data.draw(st.sampled_from(big))
+        darts = dict(graph.rotations)[v]
+        start = data.draw(st.integers(0, len(darts) - 1))
+        size = data.draw(st.integers(1, len(darts) - 1))
+        block = [darts[(start + offset) % len(darts)] >> 1 for offset in range(size)]
+        label = _fresh(graph, "split")
+        moved = network.uncontract_vertex(v, block, label)
+        assert set(moved.graph.edges[len(graph.edges)]) == {v, label}
+        assert _weights_by_corners(
+            moved, rename={label: v}, skip=len(graph.edges)
+        ) == _weights_by_corners(network)
+        assert moved.pluckers() == network.pluckers()
+        assert moved.contract_edge(len(graph.edges)).pluckers() == network.pluckers()
+
+    @given(networks(leafless_graphs()), st.data())
+    @settings(max_examples=100, deadline=None)
+    def test_middle_vertex_insertion_and_removal_keep_the_weights_and_the_point(
+        self, network, data
+    ):
+        graph = network.graph
+        assume(graph.edges and graph.is_perfectly_orientable)
+        edge = data.draw(st.integers(0, len(graph.edges) - 1))
+        color = data.draw(st.sampled_from([BLACK, WHITE]))
+        inserted = network.insert_middle_vertex(edge, color, "middle")
+        removed = inserted.remove_middle_vertex("middle")
+        assert _weights_by_corners(inserted, drop="middle") == _weights_by_corners(
+            network
+        )
+        assert inserted.pluckers() == network.pluckers()
+        assert _weights_by_corners(removed) == _weights_by_corners(network)
+        assert removed.pluckers() == network.pluckers()
+
+    @given(networks(leafless_graphs()))
+    @settings(max_examples=100, deadline=None)
+    def test_normalization_keeps_the_face_weights_and_the_point(self, network):
+        """Face by face against the single steps, which are checked above.
+
+        The reference applies (M2) contractions and (M3) removals one at a
+        time; which labels survive is not part of the contract, so the two
+        normalized networks are compared with internal vertices anonymous.
+        """
+        assume(network.graph.is_perfectly_orientable)
+        moved = network.normalized()
+        assert moved.graph == network.graph.normalized()
+        assert _weights_by_corners(moved, anonymous=True) == _weights_by_corners(
+            _normalized_stepwise(network), anonymous=True
+        )
+        assert moved.pluckers() == network.pluckers()
+
+    @given(networks(), st.data())
+    @settings(max_examples=100, deadline=None)
+    def test_middle_vertex_moves_leave_every_face_weight_unchanged(self, network, data):
+        """(M3) face by face, on reduced graphs, where labels identify faces."""
+        graph = network.graph
+        edges = [
+            index
+            for index, edge in enumerate(graph.edges)
+            if all(graph.degree(v) > 1 or v in graph.boundary for v in edge)
+        ]
+        assume(edges)
+        color = data.draw(st.sampled_from([BLACK, WHITE]))
+        moved = network.insert_middle_vertex(
+            data.draw(st.sampled_from(edges)), color, "middle"
+        )
+        assert _faces_by_label(moved) == _faces_by_label(network)
+        assert _faces_by_label(moved.remove_middle_vertex("middle")) == _faces_by_label(
+            network
+        )
+
+    @given(networks(), st.data())
+    @settings(max_examples=100, deadline=None)
+    def test_contraction_moves_leave_every_face_weight_unchanged(self, network, data):
+        """(M2) face by face, on reduced graphs, where labels identify faces."""
+        graph = network.graph
+        big = [
+            v
+            for v in graph.internal_vertices
+            if graph.degree(v) >= 3
+            and len({d >> 1 for d in dict(graph.rotations)[v]}) == graph.degree(v)
+        ]
+        assume(big)
+        v = data.draw(st.sampled_from(big))
+        darts = dict(graph.rotations)[v]
+        start = data.draw(st.integers(0, len(darts) - 1))
+        size = data.draw(st.integers(1, len(darts) - 1))
+        block = [darts[(start + k) % len(darts)] >> 1 for k in range(size)]
+        moved = network.uncontract_vertex(v, block, _fresh(graph, "split"))
+        assert _faces_by_label(moved) == _faces_by_label(network)
+        assert _faces_by_label(
+            moved.contract_edge(len(graph.edges))
+        ) == _faces_by_label(network)
+
+    @given(networks())
+    @settings(max_examples=100, deadline=None)
+    def test_normalization_leaves_every_face_weight_unchanged(self, network):
+        """(M2) and (M3) exhausted, face by face, on reduced graphs."""
+        assert _faces_by_label(network.normalized()) == _faces_by_label(network)
+
+    def test_leaf_reduction_multiplies_the_merged_faces(self):
+        network = Network.from_face_weights(_leaf_fixture(), [3, Fraction(1, 3)])
+        reduced = network.leaf_reduction("u", ["x", "y"])
+        assert reduced.face_weights == (Fraction(1),)
+        assert reduced.pluckers() == network.pluckers() == {frozenset({1, 2}): 1}
+
+    @given(reduced_graphs(max_n=5), st.data())
+    @settings(max_examples=100, deadline=None)
+    def test_leaf_reduction_multiplies_merged_faces_and_preserves_the_point(
+        self, graph, data
+    ):
+        plain = [
+            v
+            for v in graph.internal_vertices
+            if graph.degree(v) >= 2
+            and len(set(_edge_rotations(graph)[v])) == graph.degree(v)
+        ]
+        assume(plain)
+        v = data.draw(st.sampled_from(plain))
+        leafy = _attach_leaf(graph, v, data.draw(st.integers(0, graph.degree(v) - 1)))
+        assume(leafy.is_perfectly_orientable)
+        network = Network.from_edge_weights(
+            leafy, _weights(data.draw, len(leafy.edges))
+        )
+        labels = [("cut", k) for k in range(graph.degree(v))]
+        reduced = network.leaf_reduction("leaf", labels)
+        # The leaf's edge is the last one, so every other half-edge keeps its
+        # number: a face after the reduction is made of the faces before it
+        # that share a half-edge with it.
+        for darts, weight in zip(
+            reduced.graph.faces(), reduced.face_weights, strict=True
+        ):
+            pieces = [
+                y
+                for old, y in zip(leafy.faces(), network.face_weights, strict=True)
+                if set(old) & set(darts)
+            ]
+            assert weight == math.prod(pieces, start=Fraction(1))
+        merged = [
+            darts
+            for darts in reduced.graph.faces()
+            if sum(1 for old in leafy.faces() if set(old) & set(darts)) > 1
+        ]
+        assert len(merged) <= 1
+        assert reduced.pluckers() == network.pluckers()
+
+
+class TestWeightedMatchingFormula:
+    r"""Williams ICM Theorem 2.17: ``p_I(Meas(N)) = \sum_{\partial M = I} w(M)``."""
+
+    @given(leafless_graphs(), st.data())
+    @settings(max_examples=100, deadline=None)
+    def test_plucker_coordinates_are_weighted_matching_sums(self, graph, data):
+        bipartite = graph.normalized()
+        assume(bipartite.is_bipartite and bipartite.is_perfectly_orientable)
+        assume(
+            not any(set(edge) <= set(bipartite.boundary) for edge in bipartite.edges)
+        )
+        weights = _weights(data.draw, len(bipartite.edges))
+        network = Network.from_bipartite_edge_weights(bipartite, weights)
+        assert _same_point(network.pluckers(), _matching_sums(bipartite, weights))
+
+    @given(st.data())
+    @settings(max_examples=60, deadline=None)
+    def test_bipartite_le_network_measures_the_point_of_its_path_sums(self, data):
+        """The left side ``p_I(Meas(N))`` from an independent route.
+
+        The previous test matches ``pluckers`` with the matching sums, which
+        the implementation mirrors term by term; here the same bipartite
+        weights are checked against the signed path sums of the
+        coordinate-embedded Gamma-network.
+        """
+        filling, n = data.draw(st.sampled_from(_dense_le_cases()))
+        oriented, graph, weight_of = _weighted_bipartite_le_graph(
+            filling, n, _le_tableau(data, filling)
+        )
+        weights = [weight_of[frozenset(edge)] for edge in graph.edges]
+        network = Network.from_bipartite_edge_weights(graph, weights)
+        measured = {
+            frozenset(subset): value
+            for subset in itertools.combinations(
+                range(1, n + 1), len(oriented.source_set)
+            )
+            if (value := oriented.plucker(subset)) != 0
+        }
+        assert _same_point(network.pluckers(), measured)
+        assert _same_point(_matching_sums(graph, weights), measured)
+
+    @given(_WEIGHT, _WEIGHT, _WEIGHT, _WEIGHT)
+    @settings(max_examples=50, deadline=None)
+    def test_lams_square_has_its_recorded_coordinates(self, a, b, c, d):
+        """Lam Example 4.3, as recorded on ``square_network``; here ``p_12 = 1``."""
+        network = Network.from_planar_bipartite_network(bm.square_network(a, b, c, d))
+        recorded = {(1, 2): a, (1, 3): a * c + b * d, (1, 4): b}
+        recorded |= {(2, 3): d, (2, 4): Fraction(1), (3, 4): c}
+        assert network.pluckers() == {
+            frozenset(pair): value / a for pair, value in recorded.items()
+        }
+
+    def test_dimer_networks_measure_the_same_point(self):
+        for dimer in (bm.square_network(2, 3, 5, 7), bm.lollipop_network()):
+            network = Network.from_planar_bipartite_network(dimer)
+            assert _same_point(network.pluckers(), dimer.pluckers())
+
+
+class TestWeightedCanonicalExamples:
+    """The page's fixtures, read as networks."""
+
+    COLORS = (BLACK, WHITE, WHITE, BLACK, WHITE)
+
+    def test_lollipop_network_has_no_free_parameter(self):
+        """One face, ``dim = F - 1 = 0``: the weight is forced to be 1."""
+        graph = pg.lollipop_graph(self.COLORS)
+        network = Network.from_face_weights(graph, [1])
+        assert Network.from_edge_weights(graph, [2, 3, 5, 7, 11]) == network
+        with pytest.raises(ValueError, match=r"prod y_f = 1"):
+            Network.from_face_weights(graph, [2])
+
+    def test_lollipop_network_is_the_point_of_the_white_lollipops(self):
+        """Black lollipops are loops (zero columns), white ones coloops."""
+        network = Network.from_face_weights(pg.lollipop_graph(self.COLORS), [1])
+        assert network.pluckers() == {frozenset({2, 3, 5}): 1}
+        matrix = network.to_matrix()
+        zero, one = Fraction(0), Fraction(1)
+        assert matrix[1] == matrix[4] == (zero, zero, zero)
+        assert [matrix[b] for b in (2, 3, 5)] == [
+            (one, zero, zero),
+            (zero, one, zero),
+            (zero, zero, one),
+        ]
+
+    @given(_WEIGHT, _WEIGHT, _WEIGHT, _WEIGHT)
+    @settings(max_examples=50, deadline=None)
+    def test_square_move_pair_carries_one_point_satisfying_the_plucker_relation(
+        self, y1, y2, y3, y4
+    ):
+        first, second = pg.gr24_square_pair()
+        network = Network.from_face_weights(
+            first, [y1, y2, y3, y4, 1 / (y1 * y2 * y3 * y4)]
+        )
+        moved = network.square_move(4)
+        p = {tuple(sorted(pair)): value for pair, value in network.pluckers().items()}
+        assert moved.graph == second
+        assert moved.pluckers() == network.pluckers()
+        assert p[1, 3] * p[2, 4] == p[1, 2] * p[3, 4] + p[1, 4] * p[2, 3]
+
+
+class TestPlabicNetworkRoundTrips:
+    @given(networks(leafless_graphs()))
+    @settings(max_examples=100, deadline=None)
+    def test_dataframe_round_trip(self, network):
+        frame = network.to_dataframe()
+        assert list(frame.columns) == [
+            "vertex",
+            "kind",
+            "slot",
+            "edge",
+            "end",
+            "face",
+            "face_weight",
+        ]
+        assert len(frame) == 2 * len(network.graph.edges)
+        assert Network.from_dataframe(frame) == network
+
+    @pytest.mark.parametrize(
+        "example",
+        [
+            Network.from_face_weights(
+                pg.hollow_digon(), [Fraction(3, 2), 2, Fraction(1, 3)]
+            ),
+            Network.from_le_diagram(
+                [[1, 1], [1, 1]],
+                4,
+                {(1, 1): 2, (1, 2): 3, (2, 1): 5, (2, 2): Fraction(7, 3)},
+            ),
+            Network.from_face_weights(pg.lollipop_graph([BLACK, WHITE]), [1]),
+            Network.from_face_weights(_graph((), [], {}, {}), [1]),
+        ],
+    )
+    def test_experiment_io_round_trip(self, example, tmp_path):
+        path = io.write_result(example.to_dataframe(), tmp_path / "network.json")
+        decoded = Network.from_dataframe(pd.read_json(path, dtype=False))
+        assert decoded == example
+
+    def test_dataframe_missing_the_weight_columns_is_rejected(self):
+        frame = pg.hollow_digon().to_dataframe()
+        with pytest.raises(ValueError, match="missing required columns"):
+            Network.from_dataframe(frame)
+
+    def test_dataframe_with_two_weights_on_one_face_is_rejected(self):
+        frame = Network.from_face_weights(pg.hollow_digon(), [1, 1, 1]).to_dataframe()
+        frame.loc[0, "face_weight"] = "2"
+        with pytest.raises(ValueError, match="disagree"):
+            Network.from_dataframe(frame)
+
+    @given(networks(leafless_graphs()), st.data())
+    @settings(max_examples=100, deadline=None)
+    def test_lift_round_trips_through_any_perfect_orientation(self, network, data):
+        assume(network.graph.is_perfectly_orientable)
+        orientation = data.draw(st.sampled_from(network.graph.perfect_orientations()))
+        lifted = network.edge_weights(orientation)
+        assert Network.from_edge_weights(network.graph, lifted, orientation) == network
+
+    @given(networks(), st.integers(-7, 7))
+    @settings(max_examples=100, deadline=None)
+    def test_cyclic_shift_keeps_the_weights_and_the_point(self, network, steps):
+        shifted = network.cyclic_shift(steps)
+        assert shifted.graph == network.graph.cyclic_shift(steps)
+        assert _faces_by_label(shifted) == _faces_by_label(network)
+        assert _same_point(shifted.pluckers(), network.pluckers())
+        assert shifted.cyclic_shift(-steps) == network
+
+    @given(st.data())
+    @settings(max_examples=50, deadline=None)
+    def test_le_constructor_agrees_with_the_planar_network_route(self, data):
+        filling, n = data.draw(le_fillings(max_n=5))
+        tableau = _le_tableau(data, filling)
+        network = Network.from_le_diagram(filling, n, tableau)
+        oriented = bm.PlanarNetwork.from_le_diagram(filling, n, tableau)
+        assume(oriented.edges)  # an edgeless Gamma-network lists no faces at all
+        assert network.graph == Graph.from_le_diagram(filling, n)
+        assert sorted(network.face_weights) == sorted(oriented.face_weights())
+
+    def test_constructors_agree_on_the_square(self):
+        square = bm.square_network(2, 3, 5, 7)
+        from_dimers = Network.from_planar_bipartite_network(square)
+        from_orientation = Network.from_planar_network(square.to_perfect_orientation())
+        assert from_dimers.graph == pg.gr24_square_pair()[0]
+        assert from_dimers == Network.from_bipartite_edge_weights(
+            from_dimers.graph, [1, 1, 1, 1, 2, 3, 5, 7]
+        )
+        assert sorted(from_orientation.face_weights) == sorted(from_dimers.face_weights)
+
+    def test_repr_shows_the_graph_and_the_face_weights(self):
+        network = Network.from_face_weights(
+            pg.hollow_digon(), [Fraction(3, 2), 2, Fraction(1, 3)]
+        )
+        assert repr(network) == (
+            f"PlabicNetwork({pg.hollow_digon()!r}, face_weights=(3/2, 2, 1/3))"
+        )
+
+    def test_plot_writes_every_face_weight(self):
+        network = Network.from_face_weights(
+            pg.hollow_digon(), [Fraction(3, 2), 4, Fraction(1, 6)]
+        )
+        figure, ax = plt.subplots()
+        try:
+            assert network.plot_network(ax) is ax
+            texts = [text.get_text() for text in ax.texts]
+            assert [t for t in texts if t not in {"1", "2"}] == ["3/2", "4", "1/6"]
+        finally:
+            plt.close(figure)
+
+    def test_plot_creates_axes_when_none_is_given(self):
+        ax = Network.from_le_diagram([[1, 1], [1, 1]], 4).plot_network()
         try:
             assert ax.get_aspect() == 1.0
         finally:

@@ -15,12 +15,18 @@ first-class (the hollow digon is a fixture), and trips, faces, the moves
 (M1)-(M3), the reductions (R1)-(R2), and the reducedness criterion are all
 local dart manipulations.
 
-The module is the unweighted, combinatorial companion of
+A *plabic network* adds positive face weights with product 1 (Definition
+11.5, continued). :class:`PlabicNetwork` stores exactly those on top of a
+:class:`PlabicGraph`: edge weights enter and leave modulo gauge (Lemma
+11.2), the moves carry the weights along — the square move by Postnikov's
+(12.1), the rest unchanged or multiplied — and the boundary measurement
+point, its matrix and its cell are computed without a drawing, as a sum
+over perfect orientations. The module is the combinatorial companion of
 :mod:`research.boundary_measurement`, whose coordinate-embedded
 :class:`~research.boundary_measurement.PlanarNetwork` and
-:class:`~research.boundary_measurement.PlanarBipartiteNetwork` carry the
-weights and the boundary measurement map; both convert into a
-:class:`PlabicGraph`. The trip permutation leaves through
+:class:`~research.boundary_measurement.PlanarBipartiteNetwork` compute the
+same point from signed path sums, flows and dimers; both convert into a
+:class:`PlabicGraph` or a :class:`PlabicNetwork`. The trip permutation leaves through
 :class:`research.decorated_permutation.DecoratedPermutation` to
 :class:`research.positroid.Positroid` and
 :class:`research.grassmann_necklace.GrassmannNecklace`.
@@ -42,7 +48,15 @@ guards, following the page's cost note.
 import functools
 import itertools
 import math
-from collections.abc import Collection, Hashable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import (
+    Callable,
+    Collection,
+    Hashable,
+    Iterable,
+    Iterator,
+    Mapping,
+    Sequence,
+)
 from dataclasses import dataclass
 from fractions import Fraction
 from typing import TYPE_CHECKING, Literal, override
@@ -50,7 +64,11 @@ from typing import TYPE_CHECKING, Literal, override
 import pandas as pd
 
 from research._plot import ensure_axes, unit_circle
-from research.boundary_measurement import PlanarBipartiteNetwork, PlanarNetwork
+from research.boundary_measurement import (
+    PlanarBipartiteNetwork,
+    PlanarNetwork,
+    measurement_matrix,
+)
 from research.decorated_permutation import DecoratedPermutation
 from research.grassmann_necklace import GrassmannNecklace
 from research.positroid import Positroid
@@ -60,6 +78,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "PlabicGraph",
+    "PlabicNetwork",
     "gr24_square_pair",
     "hollow_digon",
     "is_weakly_separated",
@@ -77,6 +96,7 @@ WHITE = -1
 """Postnikov's ``col(v) = -1`` (Definition 11.5): turn left, one incoming edge."""
 
 _COLUMNS = ("vertex", "kind", "slot", "edge", "end")
+_NETWORK_COLUMNS = (*_COLUMNS, "face", "face_weight")
 _KIND = {BLACK: "black", WHITE: "white"}
 _COLOR = {"black": BLACK, "white": WHITE}
 
@@ -157,7 +177,11 @@ class _Draft:
 
     Darts keep their ids while a draft is edited (new edges take fresh even
     ids), and :meth:`finalize` renumbers the surviving edges compactly and
-    validates the result through :meth:`PlabicGraph._build`.
+    validates the result through :meth:`PlabicGraph._build`. The draft
+    remembers which dart replaced which and how the edges were renumbered,
+    so that :meth:`image` can follow a dart of the original graph into the
+    finished one — what :class:`PlabicNetwork` needs to carry face weights
+    through a move.
     """
 
     def __init__[W: Hashable](
@@ -177,6 +201,8 @@ class _Draft:
         }
         self._next_edge = max((dart >> 1 for dart in self.owner), default=-1) + 1
         self._fresh = itertools.count()
+        self._moved: dict[int, int] = {}
+        self._renumber: dict[int, int] = {}
 
     def new_edge(self) -> tuple[int, int]:
         """Allocate a fresh edge and return its two darts."""
@@ -213,6 +239,7 @@ class _Draft:
         v = self.owner.pop(old)
         self.rot[v][self.rot[v].index(old)] = new
         self.owner[new] = v
+        self._moved[old] = new
 
     def contract(self, dart: int) -> None:
         """Merge the far endpoint of ``dart``'s edge into its near endpoint.
@@ -286,6 +313,7 @@ class _Draft:
         """Renumber the edges compactly and build the validated graph."""
         live = sorted({dart >> 1 for dart in self.owner})
         renumber = {old: new for new, old in enumerate(live)}
+        self._renumber = renumber
         edges: list[tuple[Hashable, Hashable]] = []
         for old in live:
             if 2 * old not in self.owner or 2 * old + 1 not in self.owner:
@@ -297,6 +325,22 @@ class _Draft:
             for v, darts in self.rot.items()
         }
         return PlabicGraph._build(self.boundary, edges, rotations, self.colors)
+
+    def image(self, dart: int) -> int | None:
+        """Return where a dart ended up in the finalized graph, if it survived.
+
+        Follows the replacements made by :meth:`replace` (a replacing dart
+        has the same face on its right as the one it replaced) and applies
+        the edge renumbering of :meth:`finalize`, which must have run.
+        Frame darts (negative) are untouched by every move.
+        """
+        if dart < 0:
+            return dart
+        while dart in self._moved:
+            dart = self._moved[dart]
+        if dart not in self.owner:
+            return None
+        return 2 * self._renumber[dart >> 1] + (dart & 1)
 
 
 # --------------------------------------------------------------------------- #
@@ -1468,6 +1512,10 @@ class PlabicGraph[V: Hashable]:
             ValueError: If the edge is a loop or its endpoints are not two
                 internal vertices of the same color.
         """
+        return _narrow(self._contract_edge_draft(edge).finalize(), self)
+
+    def _contract_edge_draft(self, edge: int) -> _Draft:
+        """Validate and perform the surgery of :meth:`contract_edge`."""
         u, w = self._internal_edge(edge)
         if (
             u == w
@@ -1481,7 +1529,7 @@ class PlabicGraph[V: Hashable]:
             raise ValueError(msg)
         draft = self._draft()
         draft.contract(2 * edge)
-        return _narrow(draft.finalize(), self)
+        return draft
 
     def uncontract_vertex(
         self, vertex: V, edges: Collection[int], label: V
@@ -1503,6 +1551,13 @@ class PlabicGraph[V: Hashable]:
                 non-loop edge at it, the edges are not consecutive in its
                 rotation, or ``label`` is taken.
         """
+        draft = self._uncontract_vertex_draft(vertex, edges, label)
+        return _narrow(draft.finalize(), self)
+
+    def _uncontract_vertex_draft(
+        self, vertex: V, edges: Collection[int], label: V
+    ) -> _Draft:
+        """Validate and perform the surgery of :meth:`uncontract_vertex`."""
         if vertex not in self._color:
             msg = f"(M2) splits an internal vertex; {vertex!r} is not one"
             raise ValueError(msg)
@@ -1524,7 +1579,7 @@ class PlabicGraph[V: Hashable]:
             raise ValueError(msg)
         draft = self._draft()
         draft.uncontract(label, vertex, block)
-        return _narrow(draft.finalize(), self)
+        return draft
 
     def remove_middle_vertex(self, vertex: V) -> PlabicGraph[V]:
         """Remove a degree-two internal vertex, gluing its edges (M3).
@@ -1535,6 +1590,10 @@ class PlabicGraph[V: Hashable]:
             ValueError: If ``vertex`` is not an internal vertex of degree
                 two on two distinct edges.
         """
+        return _narrow(self._remove_middle_vertex_draft(vertex).finalize(), self)
+
+    def _remove_middle_vertex_draft(self, vertex: V) -> _Draft:
+        """Validate and perform the surgery of :meth:`remove_middle_vertex`."""
         darts = self._rotation.get(vertex, ())
         if (
             vertex not in self._color
@@ -1547,7 +1606,7 @@ class PlabicGraph[V: Hashable]:
             raise ValueError(msg)
         draft = self._draft()
         draft.splice_out(vertex)
-        return _narrow(draft.finalize(), self)
+        return draft
 
     def insert_middle_vertex(self, edge: int, color: int, label: V) -> PlabicGraph[V]:
         """Insert a degree-two vertex of either color into an edge (M3).
@@ -1558,6 +1617,11 @@ class PlabicGraph[V: Hashable]:
             ValueError: If the edge index is out of range, the color is
                 not 1 or -1, or ``label`` is taken.
         """
+        draft = self._insert_middle_vertex_draft(edge, color, label)
+        return _narrow(draft.finalize(), self)
+
+    def _insert_middle_vertex_draft(self, edge: int, color: int, label: V) -> _Draft:
+        """Validate and perform the surgery of :meth:`insert_middle_vertex`."""
         self._internal_edge(edge)
         if color not in (BLACK, WHITE):
             msg = f"(M3) inserts a black (1) or white (-1) vertex; got {color!r}"
@@ -1568,7 +1632,7 @@ class PlabicGraph[V: Hashable]:
         draft.replace(2 * edge, first[0])
         draft.replace(2 * edge + 1, second[0])
         draft.add_vertex(label, [first[1], second[1]], color)
-        return _narrow(draft.finalize(), self)
+        return draft
 
     def parallel_edge_reduction(self, face: int) -> PlabicGraph[V]:
         """Remove a hollow digon (R1).
@@ -1625,6 +1689,10 @@ class PlabicGraph[V: Hashable]:
                 match, or the result leaves the representable class (a
                 piece cut off from the boundary — FWZ Definition 7.1.1).
         """
+        return _narrow(self._leaf_reduction_draft(leaf, labels).finalize(), self)
+
+    def _leaf_reduction_draft(self, leaf: V, labels: Sequence[V]) -> _Draft:
+        """Validate and perform the surgery of :meth:`leaf_reduction`."""
         if leaf not in self._color or self.degree(leaf) != 1:
             msg = f"(R2) removes a degree-one internal vertex; {leaf!r} is not one"
             raise ValueError(msg)
@@ -1655,7 +1723,7 @@ class PlabicGraph[V: Hashable]:
         draft.drop_vertex(leaf)
         for label, dart in zip(labels, others, strict=True):
             draft.add_vertex(label, [dart], color)
-        return _narrow(draft.finalize(), self)
+        return draft
 
     def normalized(self) -> PlabicGraph[V]:
         """Return the graph with all (M2) contractions and (M3) removals done.
@@ -2051,6 +2119,742 @@ def _from_oriented[W: Hashable](
             color = WHITE if b in network.source_set else BLACK
             draft.add_vertex((b, "lollipop"), [far], color)
     return draft.finalize()
+
+
+# --------------------------------------------------------------------------- #
+# Plabic networks: face weights and the boundary measurement point
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class PlabicNetwork[V: Hashable]:
+    r"""A plabic network: a plabic graph with positive face weights.
+
+    Postnikov Definition 11.5 (continued): a plabic graph together with
+    positive real *face weights* ``y_f > 0`` satisfying ``\prod_f y_f = 1``
+    — equivalently strictly positive *edge weights* modulo gauge
+    transformations at internal vertices (Lemma 11.2). ``face_weights[f]``
+    belongs to ``graph.faces()[f]``. Face weights are the stored form
+    because they do not depend on an orientation (Theorem 10.1: reversing
+    edges while inverting their weights leaves the boundary measurement
+    point unchanged) and are canonical, so two networks are the same
+    plabic network exactly when they compare equal. Weights are exact
+    ``Fraction`` values; positive rationals stand in for positive reals.
+
+    The definition is checked as the page states it:
+
+    * ``y_f > 0``: one positive weight per face of the graph.
+    * ``prod y_f = 1``: the face weights multiply to 1.
+
+    **Face weights from edge weights.** A face is the cycle of darts that
+    have it on their right, which run clockwise around it. Relative to an
+    orientation with edge weights ``x_e``, a dart running along its edge's
+    direction multiplies ``y_f`` by ``x_e`` and one running against it
+    divides (Postnikov section 11) — the convention of
+    :meth:`research.boundary_measurement.PlanarNetwork.face_weights`,
+    which its tests pin through Lemma 11.4. An *orientation* is a sequence
+    with one tail dart per edge, as returned by
+    :meth:`PlabicGraph.perfect_orientations`; the default directs edge
+    ``e`` from ``edges[e][0]`` to ``edges[e][1]``.
+
+    **The boundary measurement point without a drawing.** The winding
+    index in Postnikov's Definition 4.4 needs a drawing, which a rotation
+    system does not have. :meth:`pluckers` uses the finite
+    subtraction-free form instead: relative to a reference orientation,
+    ``Delta_J`` is proportional to the sum, over the perfect orientations
+    with source set ``J``, of the weights of the edges they reverse. That
+    is Talaska's flow formula (arXiv:0801.4822, 2008, Theorem 3.2) read
+    through Postnikov's correspondence between flows and perfect
+    orientations (reverse the flow), and for a bipartite graph it is the
+    matching formula ``p_I = \sum_{\partial M = I} w(M)`` (Postnikov,
+    Talaska, Speyer, via Williams ICM Theorem 2.17). Exponential; behind
+    the enumeration guard of the graph.
+
+    Build through :meth:`from_face_weights`, :meth:`from_edge_weights` or
+    the other ``from_*`` constructors, which validate; calling the
+    dataclass constructor directly skips validation.
+    """
+
+    graph: PlabicGraph[V]
+    face_weights: tuple[Fraction, ...]
+
+    @override
+    def __repr__(self) -> str:
+        """Render compactly enough to read in a failing test."""
+        weights = ", ".join(str(y) for y in self.face_weights)
+        return f"PlabicNetwork({self.graph!r}, face_weights=({weights}))"
+
+    # ---------------------------------------------------------- construction
+    @classmethod
+    def from_face_weights(
+        cls, graph: PlabicGraph[V], weights: Iterable[Fraction | int]
+    ) -> PlabicNetwork[V]:
+        """Build and validate a plabic network from its face weights.
+
+        The primary formulation (Postnikov Definition 11.5).
+
+        Args:
+            graph: The underlying plabic graph.
+            weights: One weight per face, aligned with ``graph.faces()``.
+
+        Raises:
+            ValueError: Naming the violated condition of Definition 11.5 —
+                ``y_f > 0`` (one positive weight per face) or
+                ``prod y_f = 1``.
+        """
+        network = cls(graph, tuple(Fraction(y) for y in weights))
+        network._validate()
+        return network
+
+    @classmethod
+    def from_edge_weights(
+        cls,
+        graph: PlabicGraph[V],
+        weights: Sequence[Fraction | int],
+        orientation: Sequence[int] | None = None,
+    ) -> PlabicNetwork[V]:
+        """Build a plabic network from edge weights relative to an orientation.
+
+        Postnikov Definition 11.5 and Lemma 11.2: strictly positive edge
+        weights modulo gauge transformations are the same thing as face
+        weights with product 1. Gauge-equivalent inputs give equal
+        networks, and so does reversing edges while inverting their
+        weights (Theorem 10.1).
+
+        Args:
+            graph: The underlying plabic graph.
+            weights: One positive weight per edge, aligned with
+                ``graph.edges``.
+            orientation: One tail dart per edge (an entry of
+                :meth:`PlabicGraph.perfect_orientations`, or any other
+                orientation); defaults to directing edge ``e`` from
+                ``edges[e][0]`` to ``edges[e][1]``.
+
+        Raises:
+            ValueError: If the weights are not strictly positive, one per
+                edge (Lemma 11.2), or ``orientation`` does not list one
+                tail dart per edge.
+        """
+        x = [Fraction(w) for w in weights]
+        if len(x) != len(graph.edges) or any(w <= 0 for w in x):
+            msg = (
+                f"Lemma 11.2: edge weights are strictly positive, one per "
+                f"edge; got {len(x)} weights {[str(w) for w in x]!r} for "
+                f"{len(graph.edges)} edges"
+            )
+            raise ValueError(msg)
+        tails = _tails(graph, orientation)
+        faces: list[Fraction] = []
+        for face in graph.faces():
+            y = Fraction(1)
+            for dart in face:
+                along = tails[dart >> 1] == dart
+                y = y * x[dart >> 1] if along else y / x[dart >> 1]
+            faces.append(y)
+        return cls.from_face_weights(graph, faces)
+
+    @classmethod
+    def from_bipartite_edge_weights(
+        cls, graph: PlabicGraph[V], weights: Sequence[Fraction | int]
+    ) -> PlabicNetwork[V]:
+        r"""Build a plabic network from undirected weights on a bipartite graph.
+
+        The formulation in which the matching formula is stated (Postnikov,
+        refined by Talaska and Speyer, via Williams ICM Theorem 2.17):
+        ``p_I(Meas(N)) = \sum_{\partial M = I} w(M)`` with ``w(M)`` the
+        product of the weights of the matched edges. Such weights are edge
+        weights relative to the orientation directing every edge from its
+        white end to its black end, a boundary vertex counting as colored
+        opposite to its neighbor (Lam, arXiv:1506.00603, Proposition 5.3).
+
+        Raises:
+            ValueError: If the graph is not bipartite or has an edge
+                between two boundary vertices, or the weights are not
+                strictly positive, one per edge.
+        """
+        graph._require_matchable()
+
+        def shade(v: V, other: V) -> int:
+            return graph._color[v] if v in graph._color else -graph._color[other]
+
+        tails = [
+            2 * index + int(shade(u, w) != WHITE)
+            for index, (u, w) in enumerate(graph.edges)
+        ]
+        return cls.from_edge_weights(graph, weights, tails)
+
+    @classmethod
+    def from_planar_network[W: Hashable](
+        cls, network: PlanarNetwork[W]
+    ) -> PlabicNetwork[Hashable]:
+        """Return the plabic network of a perfectly oriented planar network.
+
+        The graph of :meth:`PlabicGraph.from_planar_network` with the
+        network's edge weights, read relative to the network's own
+        orientation; the lollipop edges added at isolated boundary
+        vertices get weight 1. The boundary measurement point is kept
+        (Postnikov Theorem 10.1 and section 11).
+
+        Raises:
+            ValueError: If the network is not perfectly oriented.
+        """
+        return _from_weighted(network, split=False)
+
+    @classmethod
+    def from_planar_bipartite_network[W: Hashable](
+        cls, network: PlanarBipartiteNetwork[W]
+    ) -> PlabicNetwork[W]:
+        """Return the plabic network of a planar bipartite (dimer) network.
+
+        The graph of :meth:`PlabicGraph.from_planar_bipartite_network` with
+        the network's undirected weights, in the convention of
+        :meth:`from_bipartite_edge_weights` (Lam section 4.1 colors each
+        boundary vertex opposite to its neighbor, as that convention
+        assumes).
+        """
+        graph = PlabicGraph.from_planar_bipartite_network(network)
+        weights = [weight for _, _, weight in network.edges]
+        return PlabicNetwork.from_bipartite_edge_weights(graph, weights)
+
+    @classmethod
+    def from_le_diagram(
+        cls,
+        filling: Sequence[Sequence[int]],
+        n: int,
+        weights: Mapping[tuple[int, int], Fraction | int] | None = None,
+    ) -> PlabicNetwork[Hashable]:
+        """Return the weighted Le-graph of a Le-diagram with a Gamma-tableau.
+
+        Postnikov sections 6 and 20: the Le-graph ``G_D`` of
+        :meth:`PlabicGraph.from_le_diagram`, carrying the weights of the
+        Gamma-network built by
+        :meth:`research.boundary_measurement.PlanarNetwork.from_le_diagram`;
+        the connector edges created by splitting the 4-valent vertices and
+        the lollipop edges get weight 1. As the tableau ranges over the
+        positive fillings of the 1-boxes the point sweeps out the cell of
+        the diagram.
+
+        Args:
+            filling: Rows of 0/1 values with weakly decreasing lengths.
+            n: The number of boundary vertices.
+            weights: The Gamma-tableau, keyed by 1-indexed boxes, positive
+                exactly on the 1-boxes; defaults to all 1.
+
+        Raises:
+            ValueError: If the filling is not a Le-diagram of that type or
+                the tableau is not positive exactly on the 1-boxes.
+        """
+        network = PlanarNetwork.from_le_diagram(filling, n, weights)
+        return _from_weighted(network, split=True)
+
+    def _validate(self) -> None:
+        """Check Definition 11.5; raise ``ValueError`` naming the condition."""
+        count = self.graph.face_count
+        if len(self.face_weights) != count or any(y <= 0 for y in self.face_weights):
+            msg = (
+                f"Definition 11.5 violated (y_f > 0): a plabic network has "
+                f"one positive weight per face; got "
+                f"{[str(y) for y in self.face_weights]!r} for {count} faces"
+            )
+            raise ValueError(msg)
+        product = math.prod(self.face_weights, start=Fraction(1))
+        if product != 1:
+            msg = (
+                f"Definition 11.5 violated (prod y_f = 1): the face weights "
+                f"multiply to {product}"
+            )
+            raise ValueError(msg)
+
+    # ---------------------------------------------------------- edge weights
+    def edge_weights(
+        self, orientation: Sequence[int] | None = None
+    ) -> tuple[Fraction, ...]:
+        """Return edge weights realizing the face weights, one per edge.
+
+        Postnikov Lemma 11.2: every face weighting with product 1 comes
+        from an edge weighting, unique up to gauge transformations. The
+        representative returned puts weight 1 on every edge off a
+        breadth-first spanning tree of the dual graph (faces, joined
+        across edges) and solves for the tree edges from the leaves up;
+        :meth:`from_edge_weights` inverts it.
+
+        Args:
+            orientation: The orientation the weights refer to; defaults to
+                directing edge ``e`` from ``edges[e][0]`` to ``edges[e][1]``.
+
+        Raises:
+            ValueError: If ``orientation`` does not list one tail dart per
+                edge.
+        """
+        graph = self.graph
+        tails = _tails(graph, orientation)
+        side = graph._face_of
+        across: dict[int, list[tuple[int, int]]] = {
+            index: [] for index in range(graph.face_count)
+        }
+        for index in range(len(graph.edges)):
+            right, left = side[2 * index], side[2 * index + 1]
+            if right != left:
+                across[right].append((left, index))
+                across[left].append((right, index))
+        link: dict[int, int] = {}
+        order = [0]
+        for face in order:
+            for other, index in across[face]:
+                if other != 0 and other not in link:
+                    link[other] = index
+                    order.append(other)
+        x = [Fraction(1)] * len(graph.edges)
+        for face in reversed(order[1:]):
+            current = Fraction(1)
+            for dart in graph.faces()[face]:
+                current = current / x[dart >> 1] if dart & 1 else current * x[dart >> 1]
+            index = link[face]
+            ratio = self.face_weights[face] / current
+            x[index] = x[index] * ratio if side[2 * index] == face else x[index] / ratio
+        return tuple(
+            w if tails[index] == 2 * index else 1 / w for index, w in enumerate(x)
+        )
+
+    # ----------------------------------------------------------- measurement
+    @functools.cached_property
+    def _pluckers(self) -> dict[frozenset[V], Fraction]:
+        """The nonzero Plucker coordinates, normalized at the minimal basis."""
+        graph = self.graph
+        x = self.edge_weights()
+        sums: dict[frozenset[V], Fraction] = {}
+        for orientation in graph.perfect_orientations():
+            weight = math.prod(
+                (x[tail >> 1] for tail in orientation if tail & 1), start=Fraction(1)
+            )
+            key = graph.source_set(orientation)
+            sums[key] = sums.get(key, Fraction(0)) + weight
+        if not sums:
+            msg = (
+                "the graph is not perfectly orientable, so the boundary "
+                "measurement point is undefined (Postnikov Definition 11.5)"
+            )
+            raise ValueError(msg)
+        scale = sums[_minimal_basis(graph.boundary, sums)]
+        return {basis: value / scale for basis, value in sums.items()}
+
+    def pluckers(self) -> dict[frozenset[V], Fraction]:
+        r"""Return the nonzero Plucker coordinates of ``Meas(N)``.
+
+        The boundary measurement point of Postnikov Definition 4.6, a
+        point of the totally nonnegative Grassmannian: every coordinate
+        is a subtraction-free expression in the weights, positive exactly
+        on the bases of the matroid ``M_G`` (Postnikov Theorem 12.7 for
+        reduced graphs, Corollary 16.5 in general). Computed as the class
+        docstring describes (Talaska Theorem 3.2; Williams ICM Theorem
+        2.17), which by Theorem 10.1 does not depend on the orientation
+        used. Projective coordinates are normalized so that the
+        lexicographically minimal basis, in boundary order, has
+        coordinate 1. Exponential; guarded.
+
+        Raises:
+            ValueError: If the graph is not perfectly orientable or is too
+                large to enumerate.
+        """
+        return dict(self._pluckers)
+
+    def plucker(self, subset: Iterable[V]) -> Fraction:
+        """Return the Plucker coordinate ``Delta_J`` of ``Meas(N)``.
+
+        Zero when ``J`` is not a basis of ``M_G``; normalized as in
+        :meth:`pluckers`.
+
+        Raises:
+            ValueError: If ``J`` is not a ``k``-subset of the boundary, or
+                the point is undefined (see :meth:`pluckers`).
+        """
+        labels = frozenset(subset)
+        k = len(next(iter(self._pluckers)))
+        if len(labels) != k or not labels <= set(self.graph.boundary):
+            msg = (
+                f"Plucker coordinates are indexed by {k}-subsets of the "
+                f"boundary; got {sorted(map(repr, labels))}"
+            )
+            raise ValueError(msg)
+        return self._pluckers.get(labels, Fraction(0))
+
+    def _base(self, source_set: Iterable[V] | None) -> frozenset[V]:
+        """Return a checked source set, defaulting to the minimal basis."""
+        if source_set is None:
+            return self._pivot
+        base = frozenset(source_set)
+        if base not in self._pluckers:
+            msg = (
+                f"{sorted(map(repr, base))} is not the source set of a "
+                f"perfect orientation (a basis of M_G), so it cannot index "
+                f"boundary measurements (Postnikov Definition 4.6)"
+            )
+            raise ValueError(msg)
+        return base
+
+    @functools.cached_property
+    def _pivot(self) -> frozenset[V]:
+        """The lexicographically minimal basis, in boundary order."""
+        return _minimal_basis(self.graph.boundary, self._pluckers)
+
+    def boundary_measurements(
+        self, source_set: Iterable[V] | None = None
+    ) -> dict[tuple[V, V], Fraction]:
+        r"""Return the boundary measurements ``M_ij`` for a source set ``I``.
+
+        Postnikov Definition 4.6:
+        ``M_ij = \Delta_{(I \setminus \{i\}) \cup \{j\}} / \Delta_I`` for
+        ``i`` in ``I`` and ``j`` not in ``I`` — the signed path sum of
+        Definition 4.4 for any perfect orientation with source set ``I``
+        (the orientation itself does not matter, Theorem 10.1). Keyed by
+        ``(i, j)``.
+
+        Args:
+            source_set: A basis of ``M_G``; defaults to the
+                lexicographically minimal one in boundary order.
+
+        Raises:
+            ValueError: If ``source_set`` is not a basis of ``M_G``, or
+                the point is undefined (see :meth:`pluckers`).
+        """
+        base = self._base(source_set)
+        scale = self._pluckers[base]
+        return {
+            (i, j): self._pluckers.get(base - {i} | {j}, Fraction(0)) / scale
+            for i in self.graph.boundary
+            if i in base
+            for j in self.graph.boundary
+            if j not in base
+        }
+
+    def boundary_measurement(
+        self, i: V, j: V, source_set: Iterable[V] | None = None
+    ) -> Fraction:
+        """Return the boundary measurement ``M_ij`` (Postnikov Definition 4.6).
+
+        Raises:
+            ValueError: If ``i`` is not in the source set or ``j`` is in
+                it, or as for :meth:`boundary_measurements`.
+        """
+        measurements = self.boundary_measurements(source_set)
+        if (i, j) not in measurements:
+            msg = (
+                f"measurements are indexed by a source and a sink "
+                f"(Postnikov Definition 4.6); got ({i!r}, {j!r})"
+            )
+            raise ValueError(msg)
+        return measurements[(i, j)]
+
+    # -------------------------------------------------------- transformations
+    def to_matrix(
+        self, source_set: Iterable[V] | None = None
+    ) -> dict[V, tuple[Fraction, ...]]:
+        """Return the boundary measurement matrix, as a label-to-column mapping.
+
+        Postnikov Definition 4.6 (the page's "from orientations to
+        matrices"): a ``k x n`` matrix with the identity in the source
+        columns and signed boundary measurements elsewhere, built by
+        :func:`research.boundary_measurement.measurement_matrix`. Its
+        maximal minors are the coordinates of :meth:`pluckers` up to the
+        common factor ``Delta_I``. The mapping lists the boundary in
+        clockwise order — the input contract of
+        :meth:`research.positroid.Positroid.from_matrix`.
+
+        Args:
+            source_set: A basis of ``M_G``; defaults to the
+                lexicographically minimal one in boundary order.
+
+        Raises:
+            ValueError: As for :meth:`boundary_measurements`.
+        """
+        base = self._base(source_set)
+        position = {b: index for index, b in enumerate(self.graph.boundary, start=1)}
+        measurements = {
+            (position[i], position[j]): value
+            for (i, j), value in self.boundary_measurements(base).items()
+        }
+        columns = measurement_matrix(
+            [position[i] for i in base], len(self.graph.boundary), measurements
+        )
+        return {b: columns[position[b] - 1] for b in self.graph.boundary}
+
+    def to_positroid(self) -> Positroid[V]:
+        """Return the positroid cell containing ``Meas(N)``.
+
+        Read off the boundary measurement matrix by
+        :meth:`research.positroid.Positroid.from_matrix`; equal to
+        :meth:`PlabicGraph.matroid` (Postnikov Proposition 11.7 and
+        Corollary 16.5: the image of ``Meas_G`` is the cell of ``M_G``).
+        """
+        return Positroid.from_matrix(self.to_matrix())
+
+    # -------------------------------------------------------------- the moves
+    def _transfer(
+        self, graph: PlabicGraph[V], image: Callable[[int], int | None]
+    ) -> PlabicNetwork[V]:
+        """Carry the face weights to ``graph`` along a map of darts.
+
+        Each face goes to the face holding the image of any of its
+        surviving darts (frame darts included), and a face of ``graph``
+        receives the product of the weights sent to it: a bijection for
+        (M2) and (M3), whose "face weights [are] unchanged", and a merge
+        for (R2), where "merged faces multiply their weights" (Postnikov
+        section 12).
+        """
+        landing = {
+            dart: index for index, face in enumerate(graph._faces) for dart in face
+        }
+        weights = [Fraction(1)] * graph.face_count
+        for face, y in zip(self.graph._faces, self.face_weights, strict=True):
+            images = (image(dart) for dart in face)
+            targets = {landing[dart] for dart in images if dart is not None}
+            if len(targets) != 1:
+                msg = (
+                    f"the face {face!r} does not map to a single face of the "
+                    f"moved graph, so its weight cannot be carried"
+                )
+                raise ValueError(msg)
+            weights[targets.pop()] *= y
+        return PlabicNetwork.from_face_weights(graph, weights)
+
+    def _carried(self, draft: _Draft) -> PlabicNetwork[V]:
+        """Finalize a surgery on the graph and carry the face weights along."""
+        moved = _narrow(draft.finalize(), self.graph)
+        return self._transfer(moved, draft.image)
+
+    def square_move(self, face: int) -> PlabicNetwork[V]:
+        r"""Apply the square move (M1) with its face-weight transformation.
+
+        Postnikov (12.1): with ``y_0`` the weight of the square and
+        ``y_1, ..., y_4`` those of the faces around it,
+        ``y_0' = y_0^{-1}``, ``y_1' = y_1 / (1 + y_0^{-1})``,
+        ``y_2' = y_2 (1 + y_0)``, ``y_3' = y_3 / (1 + y_0^{-1})``,
+        ``y_4' = y_4 (1 + y_0)``. Which neighbors are ``1, 3`` is fixed
+        here by requiring the boundary measurement point to be preserved
+        (Theorem 12.1): walking clockwise around the square, the face
+        across a side running from a **black** corner to a white one
+        (colors before the move) is multiplied by ``1 + y_0``, and the
+        face across a side from a white corner to a black one is divided
+        by ``1 + y_0^{-1}``. A face adjacent along two sides gets both
+        factors.
+
+        Args:
+            face: Index into ``graph.faces()`` of the square.
+
+        Raises:
+            ValueError: As for :meth:`PlabicGraph.square_move`.
+        """
+        graph = self.graph
+        moved = graph.square_move(face)
+        y0 = self.face_weights[face]
+        weights = list(self.face_weights)
+        weights[face] = 1 / y0
+        for dart in graph.faces()[face]:
+            across = graph._face_of[_mate(dart)]
+            if graph._color[graph._at[dart]] == BLACK:
+                weights[across] *= 1 + y0
+            else:
+                weights[across] /= 1 + 1 / y0
+        return PlabicNetwork.from_face_weights(moved, weights)
+
+    def contract_edge(self, edge: int) -> PlabicNetwork[V]:
+        """Contract a unicolored edge (M2); face weights unchanged.
+
+        Postnikov section 12, (M2). Arguments and errors as for
+        :meth:`PlabicGraph.contract_edge`.
+        """
+        return self._carried(self.graph._contract_edge_draft(edge))
+
+    def uncontract_vertex(
+        self, vertex: V, edges: Collection[int], label: V
+    ) -> PlabicNetwork[V]:
+        """Split a vertex along a new unicolored edge (M2); weights unchanged.
+
+        Postnikov section 12, (M2), reversed. Arguments and errors as for
+        :meth:`PlabicGraph.uncontract_vertex`.
+        """
+        return self._carried(self.graph._uncontract_vertex_draft(vertex, edges, label))
+
+    def remove_middle_vertex(self, vertex: V) -> PlabicNetwork[V]:
+        """Remove a degree-two vertex (M3); face weights unchanged.
+
+        Postnikov section 12, (M3). Arguments and errors as for
+        :meth:`PlabicGraph.remove_middle_vertex`.
+        """
+        return self._carried(self.graph._remove_middle_vertex_draft(vertex))
+
+    def insert_middle_vertex(self, edge: int, color: int, label: V) -> PlabicNetwork[V]:
+        """Insert a degree-two vertex (M3); face weights unchanged.
+
+        Postnikov section 12, (M3), reversed. Arguments and errors as for
+        :meth:`PlabicGraph.insert_middle_vertex`.
+        """
+        return self._carried(self.graph._insert_middle_vertex_draft(edge, color, label))
+
+    def leaf_reduction(self, leaf: V, labels: Sequence[V]) -> PlabicNetwork[V]:
+        """Remove a leaf with its neighbor (R2); merged faces multiply weights.
+
+        Postnikov section 12, (R2): the faces around the removed neighbor
+        merge into one, whose weight is the product of theirs. Arguments
+        and errors as for :meth:`PlabicGraph.leaf_reduction`.
+        """
+        return self._carried(self.graph._leaf_reduction_draft(leaf, labels))
+
+    def normalized(self) -> PlabicNetwork[V]:
+        """Return the network with all (M2) contractions and (M3) removals done.
+
+        As :meth:`PlabicGraph.normalized`; only moves with "face weights
+        unchanged" are used (Postnikov section 12), so the boundary
+        measurement point is kept.
+        """
+        if not self.graph.boundary:
+            return self
+        draft = self.graph._draft()
+        draft.normalize()
+        return self._carried(draft)
+
+    def cyclic_shift(self, steps: int = 1) -> PlabicNetwork[V]:
+        """Return the same network with the boundary labelling rotated.
+
+        As :meth:`PlabicGraph.cyclic_shift`; every face keeps its weight.
+        """
+        n = len(self.graph.boundary)
+        if n == 0:
+            return self
+        cut = steps % n
+
+        def image(dart: int) -> int:
+            if dart >= 0:
+                return dart
+            arc, counterclockwise = divmod(-dart - 1, 2)
+            return -(2 * ((arc - cut) % n) + 1 + counterclockwise)
+
+        return self._transfer(self.graph.cyclic_shift(steps), image)
+
+    # ---------------------------------------------------------- serialization
+    def to_dataframe(self) -> pd.DataFrame:
+        """Serialize to a tidy frame, one row per half-edge.
+
+        The columns of :meth:`PlabicGraph.to_dataframe` plus ``face`` (the
+        index, into ``graph.faces()``, of the face on the half-edge's
+        right) and ``face_weight`` (that face's weight as an exact
+        fraction string). Every face of a graph with a boundary has a
+        half-edge, so every weight is recorded; survives a
+        records-oriented JSON round trip through
+        ``experiments.io.write_result``.
+
+        Returns:
+            The tidy frame; invert with :meth:`from_dataframe`.
+        """
+        frame = self.graph.to_dataframe()
+        faces = [
+            self.graph._face_of[2 * int(edge) + int(end)]
+            for edge, end in zip(frame["edge"], frame["end"], strict=True)
+        ]
+        frame["face"] = faces
+        frame["face_weight"] = [str(self.face_weights[face]) for face in faces]
+        return frame
+
+    @staticmethod
+    def from_dataframe(df: pd.DataFrame) -> PlabicNetwork[Hashable]:
+        """Rebuild a network from a frame produced by :meth:`to_dataframe`.
+
+        Re-validates the graph and Definition 11.5. A frame with no rows
+        decodes to the empty network (one face, of weight 1).
+
+        Raises:
+            ValueError: If required columns are missing, the ``face``
+                column disagrees with the rebuilt graph, a face is given
+                two different weights, or the decoded data fails
+                validation.
+        """
+        graph = PlabicGraph.from_dataframe(df)
+        if df.empty:
+            return PlabicNetwork.from_face_weights(graph, [1])
+        missing = set(_NETWORK_COLUMNS) - set(df.columns)
+        if missing:
+            msg = f"dataframe is missing required columns {sorted(missing)}"
+            raise ValueError(msg)
+        weights: dict[int, Fraction] = {}
+        for edge, end, face, raw in zip(
+            df["edge"], df["end"], df["face"], df["face_weight"], strict=True
+        ):
+            index = graph._face_of[2 * int(edge) + int(end)]
+            weight = Fraction(str(raw))
+            if int(face) != index or weights.setdefault(index, weight) != weight:
+                msg = (
+                    f"the half-edge rows of face {index} disagree about the "
+                    f"face or its weight"
+                )
+                raise ValueError(msg)
+        return PlabicNetwork.from_face_weights(
+            graph, [weights[index] for index in range(graph.face_count)]
+        )
+
+    # ---------------------------------------------------------- visualization
+    def plot_network(self, ax: Axes | None = None) -> Axes:
+        """Draw the graph with every face weight written inside its face.
+
+        :meth:`PlabicGraph.plot_graph` plus the weight of each face at the
+        centroid of the vertices around it. Draws onto ``ax`` or a fresh
+        figure; never calls ``show``.
+        """
+        ax = self.graph.plot_graph(ax)
+        place = self.graph._layout()
+        for face, y in zip(self.graph.faces(), self.face_weights, strict=True):
+            corners = [place[self.graph._at[dart]] for dart in face]
+            if not corners:
+                continue
+            ax.annotate(
+                str(y),
+                (
+                    sum(x for x, _ in corners) / len(corners),
+                    sum(y_ for _, y_ in corners) / len(corners),
+                ),
+                ha="center",
+                va="center",
+                fontsize=8,
+                color="tab:blue",
+            )
+        return ax
+
+
+def _minimal_basis[V: Hashable](
+    boundary: Sequence[V], bases: Iterable[frozenset[V]]
+) -> frozenset[V]:
+    """Return the lexicographically minimal basis, in boundary order."""
+    position = {b: index for index, b in enumerate(boundary)}
+    return min(bases, key=lambda basis: sorted(position[b] for b in basis))
+
+
+def _tails[V: Hashable](
+    graph: PlabicGraph[V], orientation: Sequence[int] | None
+) -> tuple[int, ...]:
+    """Return the tail dart of every edge, in edge order, for an orientation."""
+    if orientation is None:
+        return tuple(2 * index for index in range(len(graph.edges)))
+    tails = tuple(sorted(orientation))
+    if [tail >> 1 for tail in tails] != list(range(len(graph.edges))):
+        msg = (
+            f"an orientation lists one tail dart per edge (dart 2e or "
+            f"2e + 1 for edge e); got {list(orientation)!r} for "
+            f"{len(graph.edges)} edges"
+        )
+        raise ValueError(msg)
+    return tails
+
+
+def _from_weighted[W: Hashable](
+    network: PlanarNetwork[W], *, split: bool
+) -> PlabicNetwork[Hashable]:
+    """Build the plabic network of a weighted oriented network.
+
+    :func:`_from_oriented` keeps the network's edges under their indices,
+    tail first, and appends the connector and lollipop edges it creates,
+    which get weight 1.
+    """
+    graph = _from_oriented(network, split=split)
+    weights = [weight for _, _, weight in network.edges]
+    weights += [Fraction(1)] * (len(graph.edges) - len(weights))
+    return PlabicNetwork.from_edge_weights(graph, weights)
 
 
 # --------------------------------------------------------------------------- #
