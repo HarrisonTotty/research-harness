@@ -105,7 +105,11 @@ def _row(
 
 
 def _git_commit() -> str | None:
-    """Return the checked-out commit, suffixed ``-dirty`` on a modified tree."""
+    """Return the checked-out commit, suffixed ``-dirty`` on a modified tree.
+
+    Untracked files count as modifications, so this must be read before the
+    run writes its own artifacts — otherwise every run marks itself dirty.
+    """
     git = shutil.which("git")
     if git is None:
         return None
@@ -175,6 +179,7 @@ def strand_dynamics(
         msg = f"--n-min ({n_min}) must not exceed --n-max ({n_max})"
         raise click.UsageError(msg)
     kinds = [kind for kind in GraphKind if kind.value in graphs]
+    commit = _git_commit()
     started = time.monotonic()
     rows: list[dict[str, object]] = []
     for n in range(n_min, n_max + 1):
@@ -209,7 +214,7 @@ def strand_dynamics(
             },
             "seeds": [],
             "deterministic": True,
-            "git_commit": _git_commit(),
+            "git_commit": commit,
             "versions": {
                 "python": platform.python_version(),
                 "pandas": importlib.metadata.version("pandas"),

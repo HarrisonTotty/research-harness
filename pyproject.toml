@@ -11,6 +11,7 @@ dependencies = [
     "cycler>=0.12.1",
     "matplotlib>=3.11.1",
     "pandas>=3.0.5",
+    "scipy>=1.18.1",
 ]
 
 [project.scripts]
@@ -26,6 +27,7 @@ dev = [
     "hypothesis>=6.161.2",
     "pre-commit>=4.6.1",
     "pandas-stubs>=3.0.0",
+    "scipy-stubs>=1.18.1.0",
 ]
 docs = [
     # ProperDocs is the maintained continuation of MkDocs 1.x, by its original

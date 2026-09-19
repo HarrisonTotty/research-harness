@@ -95,6 +95,23 @@ def test_metadata_records_every_parameter_and_the_absence_of_seeds(tmp_path):
     assert "git_commit" in metadata
 
 
+def test_the_commit_is_read_before_the_run_writes_its_own_artifacts(
+    tmp_path, monkeypatch
+):
+    seen: list[bool] = []
+
+    def commit() -> str:
+        seen.append((tmp_path / "result.json").exists())
+        return "0" * 40
+
+    monkeypatch.setattr(exp, "_git_commit", commit)
+    _, out, meta = _run(tmp_path, "--n-max", "3")
+
+    assert out.exists()
+    assert seen == [False]
+    assert json.loads(meta.read_text(encoding="utf-8"))["git_commit"] == "0" * 40
+
+
 def test_an_empty_range_is_a_usage_error(tmp_path):
     outcome, out, _ = _run(tmp_path, "--n-min", "5", "--n-max", "4")
 

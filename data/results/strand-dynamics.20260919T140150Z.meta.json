@@ -1,0 +1,26 @@
+{
+  "design_doc": "docs/experiments/strand-dynamics.md",
+  "deterministic": true,
+  "elapsed_seconds": 112.262,
+  "experiment": "strand-dynamics",
+  "git_commit": "d4312c9d82e31592b260b977152885c6d751e68c-dirty",
+  "parameters": {
+    "graphs": [
+      "bridge",
+      "le"
+    ],
+    "max_steps": 100000,
+    "n_max": 8,
+    "n_min": 2
+  },
+  "result_path": "data/results/strand-dynamics.20260919T140150Z.json",
+  "rows": 34016,
+  "seeds": [],
+  "timestamp": "20260919T140150Z",
+  "unconverged_rows": 0,
+  "versions": {
+    "pandas": "3.0.5",
+    "python": "3.14.7",
+    "research-harness": "0.1.0"
+  }
+}
